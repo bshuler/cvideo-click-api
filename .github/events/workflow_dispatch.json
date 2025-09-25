@@ -1,0 +1,13 @@
+{
+  "ref": "refs/heads/main",
+  "before": "0000000000000000000000000000000000000000", 
+  "after": "1234567890123456789012345678901234567890",
+  "repository": {
+    "name": "cvideo-click-api",
+    "full_name": "user/cvideo-click-api",
+    "default_branch": "main"
+  },
+  "inputs": {
+    "environment": "dev"
+  }
+}

@@ -1,0 +1,232 @@
+# GitHub Actions workflow for CVIDEO-CLICK-API
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+  SAM_CLI_TELEMETRY: 0
+
+jobs:
+  # =============================================================================
+  # TESTING & CODE QUALITY
+  # =============================================================================
+  test:
+    name: Test & Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+        pip install -r requirements.txt
+        
+    - name: Run code formatting check
+      run: |
+        black --check --config pyproject.toml src/ scripts/ tests/
+        
+    - name: Run linting
+      run: |
+        flake8 --extend-ignore=E203,W503 --max-line-length=88 src/ scripts/ tests/
+        
+    - name: Run type checking
+      run: |
+        mypy --config-file pyproject.toml src/ scripts/
+        
+    - name: Run unit tests
+      run: |
+        pytest tests/unit/ --cov=src --cov-report=xml --cov-report=term-missing -v
+        
+    - name: Run integration tests (with mocks)
+      run: |
+        pytest tests/integration/ --cov=src --cov-append --cov-report=xml --cov-report=term-missing -v
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        
+  # =============================================================================
+  # LOCAL BUILD & VALIDATION 
+  # =============================================================================
+  build:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+        
+    - name: Cache SAM builds
+      uses: actions/cache@v3
+      with:
+        path: .aws-sam
+        key: ${{ runner.os }}-sam-${{ hashFiles('**/template.yaml') }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Build SAM application
+      run: |
+        sam build --use-container --parallel
+        
+    - name: Validate SAM template
+      run: |
+        sam validate --template template.yaml
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: sam-build
+        path: .aws-sam/
+
+  # =============================================================================
+  # DEPLOYMENT TO AWS
+  # =============================================================================
+  deploy:
+    name: Deploy to AWS
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment: 
+      name: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+        
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: sam-build
+        path: .aws-sam/
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+        
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+        
+    - name: Terraform Plan
+      run: |
+        cd terraform
+        terraform plan -var-file="terraform.tfvars" -var="environment=${{ github.event.inputs.environment || 'dev' }}"
+        
+    - name: Terraform Apply
+      run: |
+        cd terraform
+        terraform apply -var-file="terraform.tfvars" -var="environment=${{ github.event.inputs.environment || 'dev' }}" -auto-approve
+        
+    - name: Deploy Lambda Functions
+      run: |
+        sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --parameter-overrides Environment=${{ github.event.inputs.environment || 'dev' }}
+        
+  # =============================================================================
+  # POST-DEPLOYMENT TESTING
+  # =============================================================================
+  test-deployment:
+    name: Test Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test deployed API endpoints
+      run: |
+        python scripts/test_remote_api.py
+        
+    - name: Check deployment status
+      run: |
+        python scripts/check_status.py

@@ -1,0 +1,338 @@
+# CVIDEO-CLICK-API
+
+AWS Lambda-based API for the cvideo-click project using Infrastructure as
+Code (IaC) principles and serverless architecture.
+
+## 🚀 Quick Start
+
+1. **Clone and Setup**
+
+   ```bash
+   cd cvideo-click-api
+   cp .secrets.template .secrets
+   # Edit .secrets with your AWS credentials
+   ```
+
+1. **Initialize Project**
+
+   ```bash
+   make init       # Install dependencies and verify AWS access
+   make validate   # Run code quality checks
+   ```
+
+1. **Deploy Infrastructure**
+
+   ```bash
+   make plan       # Preview infrastructure changes
+   make deploy     # Deploy to AWS
+   ```
+
+## 📋 Project Structure
+
+```text
+cvideo-click-api/
+├── src/                    # Lambda functions source code
+│   ├── shared/            # Shared utilities and libraries
+│   ├── hello_world/       # Example Lambda function
+│   └── ...                # Additional Lambda functions
+├── terraform/             # Infrastructure as Code
+│   ├── main.tf           # Main Terraform configuration
+│   └── terraform.tfvars  # Variables configuration
+├── scripts/               # Automation and utility scripts
+├── tests/                 # Unit and integration tests
+├── .ai-context.md        # AI assistant guidance
+├── pyproject.toml        # Python project configuration
+├── requirements.txt      # Python dependencies
+├── Makefile             # Development workflow automation
+└── .secrets             # AWS credentials (not in git)
+```
+
+## 🛠️ Development Workflow
+
+### Code Quality
+
+```bash
+make format      # Format code with Black (88-char lines)
+make lint        # Lint with Flake8
+make type-check  # Type checking with mypy
+make validate    # Run all quality checks
+```
+
+## 🧪 Testing Strategy
+
+### Local Testing
+
+```bash
+# Unit & Integration Tests
+make test                    # All tests with coverage
+make test-unit              # Unit tests only  
+make test-integration       # Integration tests (mocked)
+make test-watch             # Continuous testing during development
+make test-debug             # Tests with detailed debugging output
+
+# Security & Performance
+make test-security          # Static security analysis
+make test-performance       # Performance/load tests
+
+# Comprehensive Test Suites
+make test-comprehensive     # Run all test types (local + remote + CI)
+make test-local-only        # Local tests only
+make test-remote-only       # Remote AWS tests only
+make test-ci-only          # CI/CD simulation tests
+```
+
+### Local Lambda Development
+
+```bash
+# Build and run Lambda functions locally
+make local-build           # Build Lambda functions for local testing
+make local-start           # Start local API Gateway (localhost:3000)
+make local-test            # Test individual Lambda functions
+make local-deploy          # Deploy to local containerized environment
+make local-test-api        # Test API endpoints with curl
+
+# Example: Start local development server
+make local-start
+# Visit: http://localhost:3000/hello
+```
+
+### Remote AWS Testing
+
+```bash
+make remote-test           # Test deployed API endpoints
+make check-aws             # Verify AWS credentials and permissions
+make remote-status         # Check AWS deployment status
+make remote-logs           # View Lambda function logs
+```
+
+## 🚀 Deployment Workflows
+
+### Local Deployment (Development)
+
+```bash
+# 1. Build and validate locally
+make local-build           # Build with SAM
+make validate-strict       # Run all quality checks
+
+# 2. Test locally before deploying
+make local-start           # Start local API
+make local-test-api        # Test endpoints
+
+# 3. Deploy to local container environment
+make local-deploy          # Creates local test stack
+```
+
+### Remote AWS Deployment (Production)
+
+```bash
+# 1. Build and validate for AWS
+make remote-build          # Build with AWS containers
+make check-aws             # Verify AWS credentials
+
+# 2. Plan infrastructure changes
+make plan                  # Terraform plan
+
+# 3. Deploy to AWS
+make remote-deploy         # Full deployment (Terraform + SAM)
+make deploy-function FUNCTION=HelloWorldFunction  # Deploy specific function
+
+# 4. Verify deployment
+make remote-test           # Test deployed API
+make remote-status         # Check deployment status
+```
+
+## 🤖 CI/CD with GitHub Actions & ACT
+
+### GitHub Actions (Cloud CI/CD)
+
+```bash
+# Manual triggers
+make github-test           # Trigger test workflow
+make github-deploy         # Trigger deployment workflow
+
+# Automatic triggers:
+# - Push to main/develop → Full CI/CD pipeline
+# - Pull requests → Testing only
+# - Manual dispatch → Choose environment (dev/staging/prod)
+```
+
+### ACT (Local CI/CD Simulation)
+
+```bash
+# Setup ACT for local GitHub Actions
+make act-setup             # Install and configure ACT
+
+# Run GitHub Actions locally
+make act-test              # Simulate test workflow locally
+make act-deploy            # Simulate deployment workflow locally
+
+# ACT simulates the exact GitHub Actions environment locally using Docker
+```
+
+### Workflow Overview
+
+1. **Test Stage**: Code quality, unit tests, integration tests, security scans
+1. **Build Stage**: SAM build, template validation, artifact creation
+1. **Deploy Stage**: Terraform infrastructure, SAM deployment, configuration
+1. **Verify Stage**: API endpoint testing, status checks, smoke tests
+
+## 📊 Monitoring & Observability
+
+### Real-time Monitoring
+
+```bash
+make status                # Overall deployment status
+make metrics               # CloudWatch metrics dashboard
+make logs FUNCTION=HelloWorldFunction  # Function-specific logs
+make remote-logs           # All Lambda logs with traces
+```
+
+### Log Analysis
+
+```bash
+# View logs for specific functions
+make logs FUNCTION=HelloWorldFunction
+
+# Stream logs in real-time
+sam logs --stack-name cvideo-click-api --tail --include-traces
+
+# CloudWatch insights queries available in AWS console
+```
+
+## 🏗️ Architecture
+
+### Technology Stack
+
+- **AWS Lambda**: Serverless compute for API endpoints
+- **API Gateway**: REST API management and routing
+- **Terraform**: Infrastructure definition and management
+- **Python + boto3**: All Lambda functions and automation
+- **S3**: File storage and static content
+- **CloudWatch**: Monitoring and logging
+
+### Authentication
+
+- JWT tokens for API authentication
+- Developer credentials from cvideo-click-pave infrastructure
+- IAM roles with least privilege principles
+
+### Resource Naming
+
+All AWS resources use consistent naming:
+
+```text
+cvideo-api-{function-name}    # Lambda functions
+cvideo-api-gateway           # API Gateway
+cvideo-api-assets-us-east-1  # S3 buckets
+```
+
+## 🔧 Configuration
+
+### AWS Credentials
+
+The project uses developer credentials from the cvideo-click-pave infrastructure:
+
+- **User**: `developer-user`
+- **Access Key**: `AKIATXIZHCB6254PVZPV`
+- **Permissions**: S3 Full Access + Lambda Full Access + EC2 Read Only
+
+Configure in `.secrets` file:
+
+```bash
+AWS_ACCESS_KEY_ID=AKIATXIZHCB6254PVZPV
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+AWS_DEFAULT_REGION=us-east-1
+```
+
+### Python Standards
+
+- **Black Formatter**: 88-character line length
+- **Flake8 Linting**: E203/W503 exceptions for Black compatibility
+- **mypy Type Checking**: Relaxed settings for boto3 compatibility
+- **pytest Testing**: With coverage reporting
+
+## 🔍 Lambda Function Development
+
+### Function Structure
+
+Each Lambda function follows this pattern:
+
+```python
+import json
+from typing import Dict, Any
+from shared.utils import setup_logging, create_response
+
+logger = setup_logging(__name__)
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    try:
+        # Process request
+        result = process_request(event)
+        return create_response(200, result)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        return create_error_response(500, "Internal server error")
+```
+
+### Shared Libraries
+
+- `shared/utils.py`: Common utilities and response formatting
+- `shared/auth.py`: JWT authentication and authorization
+- `shared/database.py`: DynamoDB and S3 client wrappers
+
+## 📊 Monitoring
+
+### CloudWatch Integration
+
+- Structured logging with timestamps and levels
+- Custom metrics for business logic
+- Automated alerting for errors and performance
+
+### Local Development
+
+```bash
+make local-start   # Start local development server
+make local-test    # Test functions locally with SAM
+```
+
+## 🔒 Security
+
+### IAM Permissions
+
+- Lambda execution roles with minimal required permissions
+- Separate roles for different function types
+- No hard-coded credentials in code
+
+### API Security
+
+- JWT token authentication
+- CORS configuration for web clients
+- Request validation at API Gateway
+
+## 📚 Additional Resources
+
+- **Infrastructure Documentation**: See `terraform/` directory
+- **API Documentation**: Generated from OpenAPI specifications
+- **Testing Guide**: See `tests/` directory examples
+- **Deployment Guide**: Use Makefile commands for consistent deployments
+
+## 🤝 Contributing
+
+1. Follow the established code quality standards (Black, Flake8, mypy)
+1. Write tests for new functionality
+1. Update documentation for API changes
+1. Use the Makefile for all development tasks
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+- **AWS Credentials**: Run `make bootstrap-check` to verify setup
+- **Lambda Deployment**: Check IAM permissions and function packaging
+- **API Gateway**: Verify stage deployment and CORS configuration
+
+### Getting Help
+
+- Check the `.ai-context.md` file for comprehensive guidance
+- Review CloudWatch logs for runtime errors
+- Use `make status` to check overall deployment health
