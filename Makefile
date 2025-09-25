@@ -16,9 +16,18 @@ YELLOW := \033[0;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
+# Branch-based namespace configuration
+CURRENT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BRANCH_SAFE := $(shell echo "$(CURRENT_BRANCH)" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+NAMESPACE := cvideo-api-$(BRANCH_SAFE)
+STACK_NAME := cvideo-click-api-$(BRANCH_SAFE)
+
 help: ## Show this help message
 	@echo "$(BLUE)CVIDEO-CLICK-API Makefile Commands$(NC)"
 	@echo "=================================="
+	@echo "$(YELLOW)Current Branch:$(NC) $(CURRENT_BRANCH)"
+	@echo "$(YELLOW)Namespace:$(NC) $(NAMESPACE)"
+	@echo "$(YELLOW)Stack Name:$(NC) $(STACK_NAME)"
 	@echo ""
 	@echo "$(GREEN)Setup and Validation:$(NC)"
 	@grep -E '^(init|clean|validate|validate-strict).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
@@ -242,10 +251,11 @@ local-test: ## Test specific Lambda function locally with test event
 	@echo "$(BLUE)Testing Lambda functions locally...$(NC)"
 	sam local invoke HelloWorldFunction -e events/test-event.json
 
-local-deploy: local-build ## Deploy to local containerized environment
-	@echo "$(BLUE)Deploying to local container environment...$(NC)"
+local-deploy: local-build ## Deploy to local containerized environment with branch-specific naming
+	@echo "$(BLUE)Deploying to local container environment (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@echo "$(YELLOW)This creates a local stack for testing$(NC)"
-	sam deploy --stack-name cvideo-api-local --capabilities CAPABILITY_IAM --parameter-overrides Environment=local
+	@echo "$(YELLOW)Stack name: $(STACK_NAME)-local$(NC)"
+	sam deploy --stack-name $(STACK_NAME)-local --capabilities CAPABILITY_IAM --parameter-overrides Environment=local Branch=$(CURRENT_BRANCH)
 
 local-test-api: ## Test local API endpoints with curl
 	@echo "$(BLUE)Testing local API endpoints...$(NC)"
@@ -292,8 +302,8 @@ remote-build: .secrets ## Build and validate for AWS deployment with comprehensi
 	fi
 	@echo "$(GREEN)Remote build validation completed successfully!$(NC)"
 
-remote-deploy: remote-build ## Deploy to AWS with environment selection and safety checks
-	@echo "$(BLUE)Deploying to AWS...$(NC)"
+remote-deploy: remote-build ## Deploy to AWS with branch-specific namespace and environment selection
+	@echo "$(BLUE)Deploying to AWS (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(YELLOW)No environment specified, using 'dev'$(NC)"; \
 		export DEPLOY_ENV=dev; \
@@ -301,19 +311,21 @@ remote-deploy: remote-build ## Deploy to AWS with environment selection and safe
 		export DEPLOY_ENV=$(ENV); \
 	fi; \
 	echo "$(YELLOW)Deploying to environment: $$DEPLOY_ENV$(NC)"; \
+	echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"; \
+	echo "$(YELLOW)Stack name: $(STACK_NAME)-$$DEPLOY_ENV$(NC)"; \
 	echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"; \
 	echo "$(YELLOW)Deploying SAM application to AWS...$(NC)"; \
 	sam deploy \
-		--stack-name cvideo-click-api-$$DEPLOY_ENV \
+		--stack-name $(STACK_NAME)-$$DEPLOY_ENV \
 		--capabilities CAPABILITY_IAM \
-		--parameter-overrides Environment=$$DEPLOY_ENV \
+		--parameter-overrides Environment=$$DEPLOY_ENV Branch=$(CURRENT_BRANCH) \
 		--s3-bucket cvideo-sam-artifacts-20250924 \
 		--no-confirm-changeset \
 		--no-fail-on-empty-changeset; \
 	echo "$(GREEN)Deployment to AWS ($$DEPLOY_ENV) completed!$(NC)"; \
 	echo "$(YELLOW)Running post-deployment validation...$(NC)"; \
 	echo "$(BLUE)Checking deployment status...$(NC)"; \
-	aws cloudformation describe-stacks --stack-name cvideo-click-api-$$DEPLOY_ENV --query 'Stacks[0].{StackName:StackName,Status:StackStatus}' --output table 2>/dev/null || echo "$(YELLOW)Stack status check failed - may still be initializing$(NC)"; \
+	aws cloudformation describe-stacks --stack-name $(STACK_NAME)-$$DEPLOY_ENV --query 'Stacks[0].{StackName:StackName,Status:StackStatus}' --output table 2>/dev/null || echo "$(YELLOW)Stack status check failed - may still be initializing$(NC)"; \
 	echo "$(GREEN)Deployment verified successfully!$(NC)"
 
 remote-deploy-simple: remote-build-sam-only ## Simple guided deployment to AWS (interactive, SAM only)
@@ -321,32 +333,35 @@ remote-deploy-simple: remote-build-sam-only ## Simple guided deployment to AWS (
 	@echo "$(YELLOW)This will prompt you for deployment configuration$(NC)"
 	sam deploy --guided
 
-remote-deploy-sam-only: remote-build-sam-only ## Deploy SAM application only (bypass Terraform completely)
-	@echo "$(BLUE)Deploying SAM application only...$(NC)"
+remote-deploy-sam-only: remote-build-sam-only ## Deploy SAM application only with branch namespace (bypass Terraform)
+	@echo "$(BLUE)Deploying SAM application only (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@echo "$(YELLOW)Bypassing all Terraform interactions$(NC)"
+	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
+	@echo "$(YELLOW)Stack name: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"
 	sam deploy \
-		--stack-name cvideo-click-api-sam \
+		--stack-name $(STACK_NAME) \
 		--capabilities CAPABILITY_IAM \
-		--parameter-overrides Environment=dev \
+		--parameter-overrides Environment=dev Branch=$(CURRENT_BRANCH) \
 		--s3-bucket cvideo-sam-artifacts-20250924 \
 		--no-confirm-changeset \
 		--no-fail-on-empty-changeset
 	@echo "$(GREEN)SAM-only deployment completed!$(NC)"
 
-remote-deploy-fresh: remote-build-sam-only ## Fresh deployment bypassing managed resources
-	@echo "$(BLUE)Running fresh SAM deployment...$(NC)"
-	@echo "$(YELLOW)Using custom stack name to avoid conflicts$(NC)"
+remote-deploy-fresh: remote-build-sam-only ## Fresh deployment with timestamp and branch namespace
+	@echo "$(BLUE)Running fresh SAM deployment (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Using timestamped stack name to avoid conflicts$(NC)"
+	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
 	@echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	sam deploy \
-		--stack-name "cvideo-api-$$TIMESTAMP" \
+		--stack-name "$(STACK_NAME)-$$TIMESTAMP" \
 		--capabilities CAPABILITY_IAM \
-		--parameter-overrides Environment=dev \
+		--parameter-overrides Environment=dev Branch=$(CURRENT_BRANCH) \
 		--s3-bucket cvideo-sam-artifacts-20250924 \
 		--no-confirm-changeset \
 		--no-fail-on-empty-changeset; \
-	echo "$(GREEN)Fresh deployment completed with stack: cvideo-api-$$TIMESTAMP$(NC)"
+	echo "$(GREEN)Fresh deployment completed with stack: $(STACK_NAME)-$$TIMESTAMP$(NC)"
 
 remote-build-sam-only: .secrets ## Build and validate SAM only (skip Terraform validation)
 	@echo "$(BLUE)Building SAM application only...$(NC)"
@@ -385,24 +400,26 @@ remote-validate: .secrets ## Validate AWS resources and deployment readiness
 	@sam validate --template template.yaml
 	@echo "$(GREEN)AWS deployment validation completed!$(NC)"
 
-remote-test: .secrets ## Run comprehensive integration tests against deployed AWS resources
-	@echo "$(BLUE)Running comprehensive integration tests against AWS...$(NC)"
+remote-test: .secrets ## Run comprehensive integration tests against branch-specific deployed AWS resources
+	@echo "$(BLUE)Running comprehensive integration tests against AWS (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Testing stack: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Step 1: Validating deployment status...$(NC)"
-	@aws cloudformation describe-stacks --stack-name cvideo-click-api-sam --query 'Stacks[0].StackStatus' || (echo "$(RED)Stack not found or not deployed$(NC)" && exit 1)
+	@aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' || (echo "$(RED)Stack not found or not deployed$(NC)" && exit 1)
 	@echo "$(YELLOW)Step 2: Running API endpoint tests...$(NC)"
-	@python scripts/test_remote_api.py
+	@STACK_NAME=$(STACK_NAME) python scripts/test_remote_api.py
 	@echo "$(YELLOW)Step 3: Running health checks...$(NC)"
 	@$(MAKE) remote-health-check
 	@echo "$(YELLOW)Step 4: Running performance tests...$(NC)"
-	@python scripts/run_comprehensive_tests.py --remote
+	@STACK_NAME=$(STACK_NAME) python scripts/run_comprehensive_tests.py --remote
 	@echo "$(GREEN)All remote integration tests completed successfully!$(NC)"
 
-remote-health-check: .secrets ## Perform health checks on deployed AWS resources
-	@echo "$(BLUE)Performing AWS resource health checks...$(NC)"
+remote-health-check: .secrets ## Perform health checks on branch-specific deployed AWS resources
+	@echo "$(BLUE)Performing AWS resource health checks (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Checking stack: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Checking Lambda function health...$(NC)"
-	@aws lambda get-function --function-name cvideo-api-hello-world-dev > /dev/null && echo "$(GREEN)✓ Lambda function is healthy$(NC)" || echo "$(RED)✗ Lambda function issue$(NC)"
+	@aws lambda get-function --function-name $(NAMESPACE)-hello-world-dev > /dev/null && echo "$(GREEN)✓ Lambda function is healthy$(NC)" || echo "$(RED)✗ Lambda function issue$(NC)"
 	@echo "$(YELLOW)Checking API Gateway health...$(NC)"
-	@API_URL=$$(aws cloudformation describe-stacks --stack-name cvideo-click-api-sam --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text 2>/dev/null); \
+	@API_URL=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text 2>/dev/null); \
 	if [ -n "$$API_URL" ]; then \
 		if curl -s --connect-timeout 10 "$$API_URL/hello" > /dev/null; then \
 			echo "$(GREEN)✓ API Gateway is responding$(NC)"; \
@@ -413,49 +430,56 @@ remote-health-check: .secrets ## Perform health checks on deployed AWS resources
 		echo "$(RED)✗ API Gateway URL not found$(NC)"; \
 	fi
 	@echo "$(YELLOW)Checking CloudWatch logs...$(NC)"
-	@aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/cvideo-api-hello-world" --query 'logGroups[0].logGroupName' --output text > /dev/null && echo "$(GREEN)✓ CloudWatch logs accessible$(NC)" || echo "$(RED)✗ CloudWatch logs issue$(NC)"
+	@aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$(NAMESPACE)-hello-world" --query 'logGroups[0].logGroupName' --output text > /dev/null && echo "$(GREEN)✓ CloudWatch logs accessible$(NC)" || echo "$(RED)✗ CloudWatch logs issue$(NC)"
 
-remote-logs: .secrets ## View logs from deployed Lambda functions
-	@echo "$(BLUE)Viewing recent Lambda logs...$(NC)"
-	sam logs --stack-name cvideo-click-api --tail --include-traces
+remote-logs: .secrets ## View logs from deployed Lambda functions for current branch
+	@echo "$(BLUE)Viewing recent Lambda logs (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Stack: $(STACK_NAME)$(NC)"
+	sam logs --stack-name $(STACK_NAME) --tail --include-traces
 
-remote-status: .secrets ## Check status of deployed AWS resources
-	@echo "$(BLUE)Checking AWS deployment status...$(NC)"
-	@python scripts/check_status.py
+remote-status: .secrets ## Check status of deployed AWS resources for current branch
+	@echo "$(BLUE)Checking AWS deployment status (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Stack: $(STACK_NAME)$(NC)"
+	@STACK_NAME=$(STACK_NAME) python scripts/check_status.py
 	@echo "$(BLUE)Checking CloudFormation stack...$(NC)"
-	aws cloudformation describe-stacks --stack-name cvideo-click-api --query 'Stacks[0].StackStatus'
+	aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus'
 
-remote-cleanup-failed: .secrets ## Clean up failed CloudFormation stacks
-	@echo "$(BLUE)Cleaning up failed CloudFormation stacks...$(NC)"
+remote-cleanup-failed: .secrets ## Clean up failed CloudFormation stacks for current branch
+	@echo "$(BLUE)Cleaning up failed CloudFormation stacks (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
 	@echo "$(YELLOW)Attempting to delete aws-sam-cli-managed-default stack...$(NC)"
 	@aws cloudformation delete-stack --stack-name aws-sam-cli-managed-default 2>/dev/null || echo "$(YELLOW)Stack aws-sam-cli-managed-default not found or already deleted$(NC)"
-	@echo "$(YELLOW)Attempting to delete any failed cvideo-click-api stacks...$(NC)"
-	@aws cloudformation delete-stack --stack-name cvideo-click-api 2>/dev/null || echo "$(YELLOW)Stack cvideo-click-api not found$(NC)"
-	@aws cloudformation delete-stack --stack-name cvideo-click-api-dev 2>/dev/null || echo "$(YELLOW)Stack cvideo-click-api-dev not found$(NC)"
+	@echo "$(YELLOW)Attempting to delete failed stacks for branch...$(NC)"
+	@aws cloudformation delete-stack --stack-name $(STACK_NAME) 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME) not found$(NC)"
+	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-dev 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-dev not found$(NC)"
+	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-staging 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-staging not found$(NC)"
+	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-prod 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-prod not found$(NC)"
 	@echo "$(YELLOW)Waiting for stack deletion to complete...$(NC)"
 	@sleep 10
-	@echo "$(GREEN)Failed stack cleanup completed!$(NC)"
+	@echo "$(GREEN)Failed stack cleanup completed for branch $(CURRENT_BRANCH)!$(NC)"
 	@echo "$(YELLOW)You can now try deploying again with 'make remote-deploy'$(NC)"
 
-remote-destroy: .secrets ## Safely destroy AWS resources with confirmation
+remote-destroy: .secrets ## Safely destroy AWS resources for current branch with confirmation
 	@echo "$(RED)⚠️  DESTRUCTIVE OPERATION ⚠️$(NC)"
-	@echo "$(YELLOW)This will destroy ALL AWS resources for this project$(NC)"
+	@echo "$(YELLOW)This will destroy AWS resources for branch: $(CURRENT_BRANCH)$(NC)"
+	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
+	@echo "$(YELLOW)Stack name: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Including:$(NC)"
-	@echo "  - Lambda functions"
+	@echo "  - Lambda functions: $(NAMESPACE)-*"
 	@echo "  - API Gateway"
-	@echo "  - CloudFormation stacks"
+	@echo "  - CloudFormation stacks: $(STACK_NAME)*"
 	@echo "  - All associated resources"
 	@read -p "Type 'DELETE' to confirm destruction: " confirm; \
 	if [ "$$confirm" != "DELETE" ]; then \
 		echo "$(YELLOW)Destruction cancelled$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(RED)Proceeding with resource destruction...$(NC)"
+	@echo "$(RED)Proceeding with resource destruction for branch $(CURRENT_BRANCH)...$(NC)"
 	@echo "$(YELLOW)Deleting SAM stack...$(NC)"
-	@sam delete --stack-name cvideo-click-api --no-prompts --region $$(aws configure get region) || true
+	@sam delete --stack-name $(STACK_NAME) --no-prompts --region $$(aws configure get region) || true
 	@echo "$(YELLOW)Destroying Terraform resources...$(NC)"
 	@cd terraform && terraform destroy -var-file="terraform.tfvars" -auto-approve || true
-	@echo "$(GREEN)AWS resources destroyed!$(NC)"
+	@echo "$(GREEN)AWS resources destroyed for branch $(CURRENT_BRANCH)!$(NC)"
 
 remote-rollback: .secrets ## Rollback to previous deployment version
 	@echo "$(BLUE)Rolling back to previous deployment...$(NC)"
@@ -570,3 +594,10 @@ status: ## Check deployment and service status
 		echo ""; \
 		exit 1; \
 	fi
+
+debug-branch: ## Show branch detection variables for debugging
+	@echo "$(BLUE)Branch Detection Debug Information$(NC)"
+	@echo "$(YELLOW)Current Branch:$(NC) $(CURRENT_BRANCH)"
+	@echo "$(YELLOW)Branch Safe:$(NC) $(BRANCH_SAFE)"
+	@echo "$(YELLOW)Namespace:$(NC) $(NAMESPACE)"
+	@echo "$(YELLOW)Stack Name:$(NC) $(STACK_NAME)"
