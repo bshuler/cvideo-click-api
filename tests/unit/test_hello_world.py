@@ -9,7 +9,7 @@ from src.hello_world.handler import (
 )
 
 
-def test_lambda_handler_get():
+def test_lambda_handler_get() -> None:
     """Test lambda_handler with GET request."""
     event = {
         "httpMethod": "GET",
@@ -26,7 +26,7 @@ def test_lambda_handler_get():
     assert body["method"] == "GET"
 
 
-def test_lambda_handler_post():
+def test_lambda_handler_post() -> None:
     """Test lambda_handler with POST request."""
     event = {
         "httpMethod": "POST",
@@ -43,8 +43,8 @@ def test_lambda_handler_post():
     assert body["method"] == "POST"
 
 
-def test_lambda_handler_invalid_method():
-    """Test lambda_handler with unsupported method."""
+def test_lambda_handler_invalid_method() -> None:
+    """Test lambda_handler with invalid HTTP method."""
     event = {"httpMethod": "DELETE", "path": "/hello"}
     context = MagicMock()
 
@@ -55,8 +55,8 @@ def test_lambda_handler_invalid_method():
     assert "Method DELETE not allowed" in body["error"]
 
 
-def test_lambda_handler_invalid_json():
-    """Test lambda_handler with invalid JSON."""
+def test_lambda_handler_invalid_json() -> None:
+    """Test lambda_handler with invalid JSON in POST request."""
     event = {"httpMethod": "POST", "path": "/hello", "body": "invalid json"}
     context = MagicMock()
 
@@ -67,8 +67,8 @@ def test_lambda_handler_invalid_json():
     assert "Invalid JSON" in body["error"]
 
 
-def test_handle_get_request():
-    """Test handle_get_request function."""
+def test_handle_get_request() -> None:
+    """Test handle_get_request function directly."""
     query_params = {"name": "World"}
     response = handle_get_request(query_params)
 
@@ -78,7 +78,7 @@ def test_handle_get_request():
     assert body["method"] == "GET"
 
 
-def test_handle_get_request_no_name():
+def test_handle_get_request_no_name() -> None:
     """Test handle_get_request with no name parameter."""
     query_params = {}
     response = handle_get_request(query_params)
@@ -88,8 +88,8 @@ def test_handle_get_request_no_name():
     assert body["message"] == "Hello, World!"
 
 
-def test_handle_post_request():
-    """Test handle_post_request function."""
+def test_handle_post_request() -> None:
+    """Test handle_post_request function directly."""
     body_data = {"name": "Alice", "message": "Greetings"}
     response = handle_post_request(body_data)
 

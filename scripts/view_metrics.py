@@ -4,9 +4,10 @@
 import boto3
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
+from typing import List, Dict, Any
 
 
-def get_lambda_functions():
+def get_lambda_functions() -> List[Any]:
     """Get list of all Lambda functions with 'cvideo-api' prefix."""
     lambda_client = boto3.client("lambda")
 
@@ -25,7 +26,7 @@ def get_lambda_functions():
         return []
 
 
-def get_function_metrics(function_name: str):
+def get_function_metrics(function_name: str) -> Dict[str, Any]:
     """Get CloudWatch metrics for a specific Lambda function."""
     cloudwatch = boto3.client("cloudwatch")
 
@@ -82,7 +83,7 @@ def get_function_metrics(function_name: str):
     return metrics
 
 
-def display_metrics():
+def display_metrics() -> None:
     """Display metrics for all API functions."""
     print("📊 CloudWatch Metrics for CVIDEO-CLICK-API")
     print("=" * 60)
@@ -117,7 +118,7 @@ def display_metrics():
                 print(f"      {description}: {value}")
 
 
-def main():
+def main() -> None:
     """Main function to display all metrics."""
     try:
         display_metrics()

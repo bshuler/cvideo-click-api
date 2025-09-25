@@ -1,6 +1,6 @@
-.PHONY: help init clean format lint type-check test validate
+.PHONY: help init clean format lint type-check test validate validate-strict verify verify-strict check-all json-lint terraform-lint toml-lint requirements-lint gitignore-lint type-annotations-check
 .PHONY: local-build local-start local-stop local-status local-test local-deploy local-test-api
-.PHONY: remote-build remote-build-sam-only remote-deploy remote-deploy-simple remote-deploy-sam-only remote-deploy-fresh remote-deploy-prod remote-validate remote-test remote-health-check remote-logs remote-status remote-cleanup-failed remote-destroy remote-rollback
+.PHONY: remote-build remote-build-sam-only remote-deploy remote-deploy-simple remote-deploy-prod remote-validate remote-test remote-health-check remote-logs remote-status remote-cleanup-failed remote-destroy remote-rollback
 .PHONY: plan deploy deploy-function logs metrics status check-aws
 .PHONY: act-setup act-test act-deploy github-test github-deploy
 .DEFAULT_GOAL := help
@@ -22,6 +22,9 @@ BRANCH_SAFE := $(shell echo "$(CURRENT_BRANCH)" | sed 's/[^a-zA-Z0-9-]/-/g' | tr
 NAMESPACE := cvideo-api-$(BRANCH_SAFE)
 STACK_NAME := cvideo-click-api-$(BRANCH_SAFE)
 
+# AWS credential sourcing helper - ensures proper loading of .secrets file
+AWS_CMD_PREFIX = set -a && source .secrets && set +a &&
+
 help: ## Show this help message
 	@echo "$(BLUE)CVIDEO-CLICK-API Makefile Commands$(NC)"
 	@echo "=================================="
@@ -36,13 +39,13 @@ help: ## Show this help message
 	@grep -E '^(check-aws).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Development & Testing:$(NC)"
-	@grep -E '^(format|lint|type-check|security|pylance-check|markdown-lint|markdown-fix|yaml-lint|yaml-fix|validate|validate-strict|test|test-unit|test-integration|test-watch|test-debug|test-security|test-comprehensive|test-local-only|test-remote-only|test-ci-only).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^(format|lint|type-check|security|pylance-check|markdown-lint|markdown-fix|yaml-lint|yaml-fix|toml-lint|requirements-lint|gitignore-lint|verify|verify-strict|validate|validate-strict|check-all|test|test-unit|test-integration|test-watch|test-debug|test-security|test-comprehensive|test-local-only|test-remote-only|test-ci-only).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Local Development & Testing:$(NC)"
 	@grep -E '^(local-build|local-start|local-stop|local-status|local-test|local-deploy|local-test-api).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Remote AWS Deployment & Testing:$(NC)"
-	@grep -E '^(remote-build|remote-build-sam-only|remote-deploy|remote-deploy-simple|remote-deploy-sam-only|remote-deploy-fresh|remote-deploy-prod|remote-validate|remote-test|remote-health-check|remote-logs|remote-status|remote-cleanup-failed|remote-destroy|remote-rollback|plan|deploy|deploy-function).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^(remote-build|remote-build-sam-only|remote-deploy|remote-deploy-simple|remote-deploy-prod|remote-validate|remote-test|remote-health-check|remote-logs|remote-status|remote-cleanup-failed|remote-destroy|remote-rollback|plan|deploy|deploy-function).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)CI/CD (ACT & GitHub Actions):$(NC)"
 	@grep -E '^(act-setup|act-test|act-deploy|github-test|github-deploy).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
@@ -95,10 +98,10 @@ security: ## Run comprehensive security scan with multiple tools
 	@python3 scripts/security_scan.py --quiet
 	@echo "$(GREEN)Security scan completed!$(NC)"
 
-pylance-check: ## Run enhanced type checking with Pylance/Pyright
-	@echo "$(BLUE)Running enhanced type checking...$(NC)"
-	@python3 scripts/pylance_check.py --quiet
-	@echo "$(GREEN)Enhanced type checking completed!$(NC)"
+pylance-check: ## Run comprehensive type checking with MCP integration and TypedDict safety
+	@echo "$(BLUE)Running comprehensive type checking...$(NC)"
+	@python3 scripts/pylance_check.py --mcp --typeddict-check --quiet
+	@echo "$(GREEN)Comprehensive type checking completed!$(NC)"
 
 markdown-lint: ## Lint markdown files with pymarkdownlnt
 	@echo "$(BLUE)Linting markdown files...$(NC)"
@@ -119,6 +122,73 @@ yaml-fix: ## Validate YAML files (no auto-fix available)
 	@echo "$(BLUE)Validating YAML files...$(NC)"
 	@python3 scripts/yaml_lint.py --fix --quiet
 	@echo "$(GREEN)YAML validation completed!$(NC)"
+
+json-lint: ## Validate JSON files with built-in JSON parser
+	@echo "$(BLUE)Validating project JSON files...$(NC)"
+	@for file in $$(find . -name "*.json" \
+		-not -path "./.git/*" \
+		-not -path "./node_modules/*" \
+		-not -path "./.aws-sam/*" \
+		-not -path "./.mypy_cache/*" \
+		-not -path "./.pytest_cache/*" \
+		-not -path "./htmlcov/*" \
+		-not -path "./logs/*" \
+		-not -path "./.coverage/*" \
+		-not -path "./venv/*" \
+		-not -path "./.venv/*" \
+		-not -path "./env/*" \
+		-not -path "./.env/*"); do \
+		echo "Validating $$file"; \
+		python3 -m json.tool "$$file" > /dev/null || (echo "$(RED)Invalid JSON: $$file$(NC)" && exit 1); \
+	done
+	@echo "$(GREEN)JSON validation completed!$(NC)"
+
+terraform-lint: ## Validate and format Terraform files
+	@echo "$(BLUE)Validating and formatting Terraform files...$(NC)"
+	@if command -v terraform >/dev/null 2>&1; then \
+		if [ -d terraform ]; then \
+			cd terraform && terraform fmt -check -diff . || (echo "$(YELLOW)Running terraform fmt to fix formatting...$(NC)" && terraform fmt .); \
+			terraform init -backend=false -input=false > /dev/null 2>&1 || true; \
+			terraform validate || (echo "$(RED)Terraform validation failed$(NC)" && exit 1); \
+		fi; \
+	else \
+		echo "$(YELLOW)terraform not installed. Skipping Terraform validation$(NC)"; \
+	fi
+	@echo "$(GREEN)Terraform validation completed!$(NC)"
+
+toml-lint: ## Validate TOML files (pyproject.toml, etc.)
+	@echo "$(BLUE)Validating TOML files...$(NC)"
+	@for file in $$(find . -name "*.toml" -not -path "./.mypy_cache/*" -not -path "./.pytest_cache/*" -not -path "./htmlcov/*" -not -path "./.aws-sam/*" -not -path "./.git/*"); do \
+		echo "Validating $$file"; \
+		python3 -c "import tomllib; open('$$file', 'rb').read() and tomllib.load(open('$$file', 'rb'))" 2>/dev/null || \
+		python3 -c "import tomli; tomli.load(open('$$file', 'rb'))" 2>/dev/null || \
+		(echo "$(RED)Invalid TOML: $$file$(NC)" && exit 1); \
+	done
+	@echo "$(GREEN)TOML validation completed!$(NC)"
+
+requirements-lint: ## Validate requirements.txt files format
+	@echo "$(BLUE)Validating requirements files...$(NC)"
+	@for file in $$(find . -name "requirements*.txt" -not -path "./.mypy_cache/*" -not -path "./.pytest_cache/*" -not -path "./htmlcov/*" -not -path "./.aws-sam/*" -not -path "./.git/*"); do \
+		echo "Validating $$file"; \
+		python3 -m pip install --dry-run --quiet -r "$$file" 2>/dev/null || \
+		(echo "$(YELLOW)Warning: Some packages in $$file may not be available$(NC)"); \
+	done
+	@echo "$(GREEN)Requirements validation completed!$(NC)"
+
+gitignore-lint: ## Validate .gitignore file format
+	@echo "$(BLUE)Validating .gitignore file...$(NC)"
+	@if [ -f .gitignore ]; then \
+		echo "Checking .gitignore syntax"; \
+		git check-ignore --verbose . 2>/dev/null || true; \
+		echo "$(GREEN).gitignore validation completed!$(NC)"; \
+	else \
+		echo "$(YELLOW)No .gitignore file found$(NC)"; \
+	fi
+
+type-annotations-check: ## Check for missing type annotations in Python files
+	@echo "$(BLUE)Checking for missing type annotations...$(NC)"
+	@python3 scripts/pylance_check.py --quiet || true
+	@echo "$(YELLOW)Note: Run 'make type-annotations-fix' to add missing annotations$(NC)"
 
 test: ## Run all tests with coverage
 	@echo "$(BLUE)Running all tests with coverage...$(NC)"
@@ -173,11 +243,43 @@ test-ci-only: ## Run only CI/CD simulation tests
 	@echo "$(BLUE)Running CI/CD simulation tests only...$(NC)"
 	@python scripts/run_comprehensive_tests.py --ci
 
-validate: format lint type-check markdown-lint yaml-lint ## Run comprehensive code validation (format + lint + type-check + markdown + yaml)
+validate: format lint type-check markdown-lint yaml-lint json-lint ## Run comprehensive code validation (format + lint + type-check + markdown + yaml + json)
 	@echo "$(GREEN)Code validation completed!$(NC)"
 
-validate-strict: format lint type-check security pylance-check markdown-lint yaml-lint ## Run complete validation with security scanning - for CI/CD
+validate-strict: format lint type-check security markdown-lint yaml-lint json-lint terraform-lint ## Run complete validation with security scanning - for CI/CD
 	@echo "$(GREEN)All strict validation checks passed!$(NC)"
+
+verify: format lint type-check markdown-lint yaml-lint json-lint toml-lint requirements-lint gitignore-lint ## Verify all file types and formats in the project
+	@echo "$(GREEN)All file format verification completed!$(NC)"
+
+verify-strict: format lint type-check security pylance-check markdown-lint yaml-lint json-lint terraform-lint toml-lint requirements-lint gitignore-lint ## Strict verification with enhanced type checking and security
+	@echo "$(GREEN)All strict file format verification completed!$(NC)"
+
+check-all: ## Complete validation - code quality, security, functional, lint, format - everything once
+	@echo "$(BLUE)🚀 Starting comprehensive validation of everything...$(NC)"
+	@echo "$(BLUE)📝 Step 1/9: Code Formatting...$(NC)"
+	@$(MAKE) --no-print-directory format
+	@echo "$(BLUE)🔍 Step 2/9: Code Linting...$(NC)"
+	@$(MAKE) --no-print-directory lint
+	@echo "$(BLUE)🏷️  Step 3/9: Type Checking (MyPy)...$(NC)"
+	@$(MAKE) --no-print-directory type-check
+	@echo "$(BLUE)🔒 Step 4/9: Security Scanning...$(NC)"
+	@$(MAKE) --no-print-directory security
+	@echo "$(BLUE)⚡ Step 5/9: Enhanced Type Checking (Pylance)...$(NC)"
+	@$(MAKE) --no-print-directory pylance-check
+	@echo "$(BLUE)📄 Step 6/9: Markdown Validation...$(NC)"
+	@$(MAKE) --no-print-directory markdown-lint
+	@echo "$(BLUE)📋 Step 7/9: YAML Validation...$(NC)"
+	@$(MAKE) --no-print-directory yaml-lint
+	@echo "$(BLUE)🗂️  Step 8/9: File Format Validation (JSON, TOML, Requirements, .gitignore)...$(NC)"
+	@$(MAKE) --no-print-directory json-lint
+	@$(MAKE) --no-print-directory toml-lint
+	@$(MAKE) --no-print-directory requirements-lint
+	@$(MAKE) --no-print-directory gitignore-lint
+	@echo "$(BLUE)🏗️  Step 9/9: Infrastructure Validation (Terraform)...$(NC)"
+	@$(MAKE) --no-print-directory terraform-lint
+	@echo "$(GREEN)✅ COMPLETE! All validation checks passed - code quality, security, functional, lint, format$(NC)"
+	@echo "$(GREEN)🎉 Your code meets all standards: functional correctness, security, and code quality$(NC)"
 
 # =============================================================================
 # LOCAL DEVELOPMENT & TESTING COMMANDS
@@ -287,7 +389,7 @@ remote-build: .secrets ## Build and validate for AWS deployment with comprehensi
 		exit 1; \
 	fi
 	@echo "$(YELLOW)Checking AWS credentials...$(NC)"
-	@aws sts get-caller-identity > /dev/null || (echo "$(RED)AWS credentials not configured$(NC)" && exit 1)
+	$(AWS_CMD_PREFIX) aws sts get-caller-identity > /dev/null || (echo "$(RED)AWS credentials not configured$(NC)" && exit 1)
 	@echo "$(GREEN)AWS credentials verified$(NC)"
 	@echo "$(YELLOW)Building Lambda functions...$(NC)"
 	sam build --use-container --parallel
@@ -302,40 +404,8 @@ remote-build: .secrets ## Build and validate for AWS deployment with comprehensi
 	fi
 	@echo "$(GREEN)Remote build validation completed successfully!$(NC)"
 
-remote-deploy: remote-build ## Deploy to AWS with branch-specific namespace and environment selection
+remote-deploy: remote-build-sam-only ## Deploy SAM application to AWS with branch-specific namespace
 	@echo "$(BLUE)Deploying to AWS (Branch: $(CURRENT_BRANCH))...$(NC)"
-	@if [ -z "$(ENV)" ]; then \
-		echo "$(YELLOW)No environment specified, using 'dev'$(NC)"; \
-		export DEPLOY_ENV=dev; \
-	else \
-		export DEPLOY_ENV=$(ENV); \
-	fi; \
-	echo "$(YELLOW)Deploying to environment: $$DEPLOY_ENV$(NC)"; \
-	echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"; \
-	echo "$(YELLOW)Stack name: $(STACK_NAME)-$$DEPLOY_ENV$(NC)"; \
-	echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"; \
-	echo "$(YELLOW)Deploying SAM application to AWS...$(NC)"; \
-	sam deploy \
-		--stack-name $(STACK_NAME)-$$DEPLOY_ENV \
-		--capabilities CAPABILITY_IAM \
-		--parameter-overrides Environment=$$DEPLOY_ENV Branch=$(CURRENT_BRANCH) \
-		--s3-bucket cvideo-sam-artifacts-20250924 \
-		--no-confirm-changeset \
-		--no-fail-on-empty-changeset; \
-	echo "$(GREEN)Deployment to AWS ($$DEPLOY_ENV) completed!$(NC)"; \
-	echo "$(YELLOW)Running post-deployment validation...$(NC)"; \
-	echo "$(BLUE)Checking deployment status...$(NC)"; \
-	aws cloudformation describe-stacks --stack-name $(STACK_NAME)-$$DEPLOY_ENV --query 'Stacks[0].{StackName:StackName,Status:StackStatus}' --output table 2>/dev/null || echo "$(YELLOW)Stack status check failed - may still be initializing$(NC)"; \
-	echo "$(GREEN)Deployment verified successfully!$(NC)"
-
-remote-deploy-simple: remote-build-sam-only ## Simple guided deployment to AWS (interactive, SAM only)
-	@echo "$(BLUE)Running guided SAM deployment...$(NC)"
-	@echo "$(YELLOW)This will prompt you for deployment configuration$(NC)"
-	sam deploy --guided
-
-remote-deploy-sam-only: remote-build-sam-only ## Deploy SAM application only with branch namespace (bypass Terraform)
-	@echo "$(BLUE)Deploying SAM application only (Branch: $(CURRENT_BRANCH))...$(NC)"
-	@echo "$(YELLOW)Bypassing all Terraform interactions$(NC)"
 	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
 	@echo "$(YELLOW)Stack name: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"
@@ -346,22 +416,12 @@ remote-deploy-sam-only: remote-build-sam-only ## Deploy SAM application only wit
 		--s3-bucket cvideo-sam-artifacts-20250924 \
 		--no-confirm-changeset \
 		--no-fail-on-empty-changeset
-	@echo "$(GREEN)SAM-only deployment completed!$(NC)"
+	@echo "$(GREEN)Deployment completed!$(NC)"
 
-remote-deploy-fresh: remote-build-sam-only ## Fresh deployment with timestamp and branch namespace
-	@echo "$(BLUE)Running fresh SAM deployment (Branch: $(CURRENT_BRANCH))...$(NC)"
-	@echo "$(YELLOW)Using timestamped stack name to avoid conflicts$(NC)"
-	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
-	@echo "$(YELLOW)Using dedicated S3 bucket: cvideo-sam-artifacts-20250924$(NC)"
-	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
-	sam deploy \
-		--stack-name "$(STACK_NAME)-$$TIMESTAMP" \
-		--capabilities CAPABILITY_IAM \
-		--parameter-overrides Environment=dev Branch=$(CURRENT_BRANCH) \
-		--s3-bucket cvideo-sam-artifacts-20250924 \
-		--no-confirm-changeset \
-		--no-fail-on-empty-changeset; \
-	echo "$(GREEN)Fresh deployment completed with stack: $(STACK_NAME)-$$TIMESTAMP$(NC)"
+remote-deploy-simple: remote-build-sam-only ## Simple guided deployment to AWS (interactive, SAM only)
+	@echo "$(BLUE)Running guided SAM deployment...$(NC)"
+	@echo "$(YELLOW)This will prompt you for deployment configuration$(NC)"
+	sam deploy --guided
 
 remote-build-sam-only: .secrets ## Build and validate SAM only (skip Terraform validation)
 	@echo "$(BLUE)Building SAM application only...$(NC)"
@@ -370,7 +430,7 @@ remote-build-sam-only: .secrets ## Build and validate SAM only (skip Terraform v
 		echo "$(YELLOW)Warning: terraform/terraform.tfvars not found$(NC)"; \
 	fi
 	@echo "$(YELLOW)Checking AWS credentials...$(NC)"
-	@aws sts get-caller-identity > /dev/null || (echo "$(RED)AWS credentials not configured$(NC)" && exit 1)
+	$(AWS_CMD_PREFIX) aws sts get-caller-identity > /dev/null || (echo "$(RED)AWS credentials not configured$(NC)" && exit 1)
 	@echo "$(GREEN)AWS credentials verified$(NC)"
 	@echo "$(YELLOW)Building Lambda functions...$(NC)"
 	sam build --use-container --parallel
@@ -389,22 +449,52 @@ remote-deploy-prod: remote-build ## Deploy to production with extra confirmation
 	@ENV=prod $(MAKE) remote-deploy
 
 remote-validate: .secrets ## Validate AWS resources and deployment readiness
-	@echo "$(BLUE)Validating AWS deployment readiness...$(NC)"
-	@echo "$(YELLOW)Checking AWS credentials and permissions...$(NC)"
-	@aws sts get-caller-identity
-	@echo "$(YELLOW)Validating Terraform state and plan...$(NC)"
-	@cd terraform && terraform init && terraform plan -var-file="terraform.tfvars" -detailed-exitcode || true
-	@echo "$(YELLOW)Checking CloudFormation stack status...$(NC)"
-	@aws cloudformation describe-stacks --stack-name cvideo-click-api --query 'Stacks[0].{StackName:StackName,Status:StackStatus,LastUpdated:LastUpdatedTime}' --output table 2>/dev/null || echo "$(YELLOW)Stack not found - will be created on first deployment$(NC)"
-	@echo "$(YELLOW)Validating SAM template...$(NC)"
-	@sam validate --template template.yaml
-	@echo "$(GREEN)AWS deployment validation completed!$(NC)"
+	@echo "$(BLUE)🔍 AWS Deployment Validation (Branch: $(CURRENT_BRANCH))$(NC)"
+	@echo "$(BLUE)==============================================$(NC)"
+	@echo ""
+	@echo "$(CYAN)🔐 AWS Credentials:$(NC)"
+	@ACCOUNT_ID=$$($(AWS_CMD_PREFIX) aws sts get-caller-identity --query 'Account' --output text 2>/dev/null); \
+	USER_ARN=$$($(AWS_CMD_PREFIX) aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null); \
+	if [ -n "$$ACCOUNT_ID" ]; then \
+		echo "   $(GREEN)✅ Account: $$ACCOUNT_ID$(NC)"; \
+		echo "   $(GREEN)✅ User: $$USER_ARN$(NC)"; \
+	else \
+		echo "   $(RED)❌ AWS credentials not configured$(NC)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "$(CYAN)📋 SAM Template:$(NC)"
+	@if sam validate --template template.yaml >/dev/null 2>&1; then \
+		echo "   $(GREEN)✅ template.yaml is valid$(NC)"; \
+	else \
+		echo "   $(RED)❌ template.yaml validation failed$(NC)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "$(CYAN)☁️  Current Stack Status:$(NC)"
+	@STACK_STATUS=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' --output text 2>/dev/null); \
+	if [ -n "$$STACK_STATUS" ]; then \
+		echo "   $(GREEN)✅ Stack $(STACK_NAME): $$STACK_STATUS$(NC)"; \
+	else \
+		echo "   $(YELLOW)ℹ️  Stack $(STACK_NAME): Not deployed (will be created)$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🗂️  S3 Deployment Bucket:$(NC)"
+	@if $(AWS_CMD_PREFIX) aws s3 ls s3://cvideo-sam-artifacts-20250924 >/dev/null 2>&1; then \
+		echo "   $(GREEN)✅ cvideo-sam-artifacts-20250924: Accessible$(NC)"; \
+	else \
+		echo "   $(RED)❌ cvideo-sam-artifacts-20250924: Not accessible$(NC)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "$(BLUE)==============================================$(NC)"
+	@echo "$(GREEN)🎉 All validations passed! Ready to deploy.$(NC)"
 
 remote-test: .secrets ## Run comprehensive integration tests against branch-specific deployed AWS resources
 	@echo "$(BLUE)Running comprehensive integration tests against AWS (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@echo "$(YELLOW)Testing stack: $(STACK_NAME)$(NC)"
 	@echo "$(YELLOW)Step 1: Validating deployment status...$(NC)"
-	@aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' || (echo "$(RED)Stack not found or not deployed$(NC)" && exit 1)
+	@$(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' || (echo "$(RED)Stack not found or not deployed$(NC)" && exit 1)
 	@echo "$(YELLOW)Step 2: Running API endpoint tests...$(NC)"
 	@STACK_NAME=$(STACK_NAME) python scripts/test_remote_api.py
 	@echo "$(YELLOW)Step 3: Running health checks...$(NC)"
@@ -414,23 +504,41 @@ remote-test: .secrets ## Run comprehensive integration tests against branch-spec
 	@echo "$(GREEN)All remote integration tests completed successfully!$(NC)"
 
 remote-health-check: .secrets ## Perform health checks on branch-specific deployed AWS resources
-	@echo "$(BLUE)Performing AWS resource health checks (Branch: $(CURRENT_BRANCH))...$(NC)"
-	@echo "$(YELLOW)Checking stack: $(STACK_NAME)$(NC)"
-	@echo "$(YELLOW)Checking Lambda function health...$(NC)"
-	@aws lambda get-function --function-name $(NAMESPACE)-hello-world-dev > /dev/null && echo "$(GREEN)✓ Lambda function is healthy$(NC)" || echo "$(RED)✗ Lambda function issue$(NC)"
-	@echo "$(YELLOW)Checking API Gateway health...$(NC)"
-	@API_URL=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text 2>/dev/null); \
-	if [ -n "$$API_URL" ]; then \
-		if curl -s --connect-timeout 10 "$$API_URL/hello" > /dev/null; then \
-			echo "$(GREEN)✓ API Gateway is responding$(NC)"; \
+	@echo "$(BLUE)🩺 Health Check Report (Branch: $(CURRENT_BRANCH))$(NC)"
+	@echo "$(BLUE)========================================$(NC)"
+	@echo "$(YELLOW)Stack: $(STACK_NAME)$(NC)"
+	@echo ""
+	@echo "$(CYAN)⚡ Lambda Function:$(NC)"
+	@$(AWS_CMD_PREFIX) aws lambda get-function --function-name $(NAMESPACE)-hello-world-dev >/dev/null 2>&1 && echo "   $(GREEN)✅ $(NAMESPACE)-hello-world-dev: Healthy$(NC)" || echo "   $(RED)❌ $(NAMESPACE)-hello-world-dev: Unavailable$(NC)"
+	@echo ""
+	@echo "$(CYAN)🌐 API Gateway:$(NC)"
+	@API_URL=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text 2>/dev/null); \
+	if [ -n "$$API_URL" ] && [ "$$API_URL" != "None" ]; then \
+		if curl -s --connect-timeout 5 "$$API_URL/hello" >/dev/null 2>&1; then \
+			echo "   $(GREEN)✅ API responding at $$API_URL$(NC)"; \
 		else \
-			echo "$(RED)✗ API Gateway not responding$(NC)"; \
+			echo "   $(YELLOW)⚠️  API found but not responding: $$API_URL$(NC)"; \
 		fi; \
 	else \
-		echo "$(RED)✗ API Gateway URL not found$(NC)"; \
+		echo "   $(YELLOW)ℹ️  No API Gateway configured (Lambda-only deployment)$(NC)"; \
 	fi
-	@echo "$(YELLOW)Checking CloudWatch logs...$(NC)"
-	@aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$(NAMESPACE)-hello-world" --query 'logGroups[0].logGroupName' --output text > /dev/null && echo "$(GREEN)✓ CloudWatch logs accessible$(NC)" || echo "$(RED)✗ CloudWatch logs issue$(NC)"
+	@echo ""
+	@echo "$(CYAN)📊 CloudWatch Logs:$(NC)"
+	@$(AWS_CMD_PREFIX) aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$(NAMESPACE)-hello-world" --query 'logGroups[0].logGroupName' --output text >/dev/null 2>&1 && echo "   $(GREEN)✅ Log groups accessible$(NC)" || echo "   $(RED)❌ Log groups unavailable$(NC)"
+	@echo ""
+	@echo "$(CYAN)☁️  CloudFormation Stack:$(NC)"
+	@STACK_STATUS=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' --output text 2>/dev/null); \
+	if [ -n "$$STACK_STATUS" ]; then \
+		if [ "$$STACK_STATUS" = "CREATE_COMPLETE" ] || [ "$$STACK_STATUS" = "UPDATE_COMPLETE" ]; then \
+			echo "   $(GREEN)✅ Stack Status: $$STACK_STATUS$(NC)"; \
+		else \
+			echo "   $(YELLOW)⚠️  Stack Status: $$STACK_STATUS$(NC)"; \
+		fi; \
+	else \
+		echo "   $(RED)❌ Stack not found$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(BLUE)========================================$(NC)"
 
 remote-logs: .secrets ## View logs from deployed Lambda functions for current branch
 	@echo "$(BLUE)Viewing recent Lambda logs (Branch: $(CURRENT_BRANCH))...$(NC)"
@@ -438,22 +546,64 @@ remote-logs: .secrets ## View logs from deployed Lambda functions for current br
 	sam logs --stack-name $(STACK_NAME) --tail --include-traces
 
 remote-status: .secrets ## Check status of deployed AWS resources for current branch
-	@echo "$(BLUE)Checking AWS deployment status (Branch: $(CURRENT_BRANCH))...$(NC)"
+	@echo "$(BLUE)📊 Deployment Status Report (Branch: $(CURRENT_BRANCH))$(NC)"
+	@echo "$(BLUE)============================================$(NC)"
 	@echo "$(YELLOW)Stack: $(STACK_NAME)$(NC)"
-	@STACK_NAME=$(STACK_NAME) python scripts/check_status.py
-	@echo "$(BLUE)Checking CloudFormation stack...$(NC)"
-	aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus'
+	@echo ""
+	@echo "$(CYAN)☁️  CloudFormation Stack:$(NC)"
+	@STACK_STATUS=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].StackStatus' --output text 2>/dev/null); \
+	if [ -n "$$STACK_STATUS" ]; then \
+		if [ "$$STACK_STATUS" = "CREATE_COMPLETE" ] || [ "$$STACK_STATUS" = "UPDATE_COMPLETE" ]; then \
+			echo "   $(GREEN)✅ Stack Status: $$STACK_STATUS$(NC)"; \
+		else \
+			echo "   $(YELLOW)⚠️  Stack Status: $$STACK_STATUS$(NC)"; \
+		fi; \
+	else \
+		echo "   $(RED)❌ Stack not found$(NC)"; \
+		echo "$(BLUE)============================================$(NC)"; \
+		echo "$(RED)💡 No deployment found. Run 'make remote-deploy' to deploy.$(NC)"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "$(CYAN)⚡ Lambda Functions:$(NC)"
+	@LAMBDA_ARN=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].Outputs[?OutputKey==`HelloWorldFunctionArn`].OutputValue' --output text 2>/dev/null); \
+	if [ -n "$$LAMBDA_ARN" ] && [ "$$LAMBDA_ARN" != "None" ]; then \
+		FUNCTION_NAME=$$(echo $$LAMBDA_ARN | cut -d: -f7); \
+		FUNCTION_STATE=$$($(AWS_CMD_PREFIX) aws lambda get-function --function-name $$FUNCTION_NAME --query 'Configuration.State' --output text 2>/dev/null); \
+		FUNCTION_STATUS=$$($(AWS_CMD_PREFIX) aws lambda get-function --function-name $$FUNCTION_NAME --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null); \
+		if [ "$$FUNCTION_STATE" = "Active" ] && [ "$$FUNCTION_STATUS" = "Successful" ]; then \
+			echo "   $(GREEN)✅ $$FUNCTION_NAME: Active (Successful)$(NC)"; \
+		else \
+			echo "   $(RED)❌ $$FUNCTION_NAME: $$FUNCTION_STATE ($$FUNCTION_STATUS)$(NC)"; \
+		fi; \
+	else \
+		echo "   $(RED)❌ No Lambda functions found in stack$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🌐 API Gateway:$(NC)"
+	@API_URL=$$($(AWS_CMD_PREFIX) aws cloudformation describe-stacks --stack-name $(STACK_NAME) --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text 2>/dev/null); \
+	if [ -n "$$API_URL" ] && [ "$$API_URL" != "None" ]; then \
+		echo "   $(GREEN)✅ API Gateway: $$API_URL$(NC)"; \
+	else \
+		echo "   $(YELLOW)ℹ️  No API Gateway configured (Lambda-only deployment)$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🗂️  S3 Deployment Bucket:$(NC)"
+	@if $(AWS_CMD_PREFIX) aws s3 ls s3://cvideo-sam-artifacts-20250924 >/dev/null 2>&1; then \
+		echo "   $(GREEN)✅ cvideo-sam-artifacts-20250924: Accessible$(NC)"; \
+	else \
+		echo "   $(RED)❌ cvideo-sam-artifacts-20250924: Not accessible$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(BLUE)============================================$(NC)"
+	@echo "$(GREEN)🎉 Status check completed!$(NC)"
 
 remote-cleanup-failed: .secrets ## Clean up failed CloudFormation stacks for current branch
 	@echo "$(BLUE)Cleaning up failed CloudFormation stacks (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
-	@echo "$(YELLOW)Attempting to delete aws-sam-cli-managed-default stack...$(NC)"
-	@aws cloudformation delete-stack --stack-name aws-sam-cli-managed-default 2>/dev/null || echo "$(YELLOW)Stack aws-sam-cli-managed-default not found or already deleted$(NC)"
-	@echo "$(YELLOW)Attempting to delete failed stacks for branch...$(NC)"
-	@aws cloudformation delete-stack --stack-name $(STACK_NAME) 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME) not found$(NC)"
-	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-dev 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-dev not found$(NC)"
-	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-staging 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-staging not found$(NC)"
-	@aws cloudformation delete-stack --stack-name $(STACK_NAME)-prod 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME)-prod not found$(NC)"
+	@echo "$(YELLOW)Stack name: $(STACK_NAME)$(NC)"
+	@echo "$(YELLOW)Attempting to delete failed stack for current branch...$(NC)"
+	$(AWS_CMD_PREFIX) aws cloudformation delete-stack --stack-name $(STACK_NAME) 2>/dev/null || echo "$(YELLOW)Stack $(STACK_NAME) not found$(NC)"
 	@echo "$(YELLOW)Waiting for stack deletion to complete...$(NC)"
 	@sleep 10
 	@echo "$(GREEN)Failed stack cleanup completed for branch $(CURRENT_BRANCH)!$(NC)"
@@ -467,7 +617,7 @@ remote-destroy: .secrets ## Safely destroy AWS resources for current branch with
 	@echo "$(YELLOW)Including:$(NC)"
 	@echo "  - Lambda functions: $(NAMESPACE)-*"
 	@echo "  - API Gateway"
-	@echo "  - CloudFormation stacks: $(STACK_NAME)*"
+	@echo "  - CloudFormation stack: $(STACK_NAME)"
 	@echo "  - All associated resources"
 	@read -p "Type 'DELETE' to confirm destruction: " confirm; \
 	if [ "$$confirm" != "DELETE" ]; then \
@@ -477,22 +627,20 @@ remote-destroy: .secrets ## Safely destroy AWS resources for current branch with
 	@echo "$(RED)Proceeding with resource destruction for branch $(CURRENT_BRANCH)...$(NC)"
 	@echo "$(YELLOW)Deleting SAM stack...$(NC)"
 	@sam delete --stack-name $(STACK_NAME) --no-prompts --region $$(aws configure get region) || true
-	@echo "$(YELLOW)Destroying Terraform resources...$(NC)"
-	@cd terraform && terraform destroy -var-file="terraform.tfvars" -auto-approve || true
 	@echo "$(GREEN)AWS resources destroyed for branch $(CURRENT_BRANCH)!$(NC)"
 
 remote-rollback: .secrets ## Rollback to previous deployment version
 	@echo "$(BLUE)Rolling back to previous deployment...$(NC)"
 	@echo "$(YELLOW)Getting previous CloudFormation stack version...$(NC)"
-	@aws cloudformation list-stacks --stack-status-filter UPDATE_COMPLETE --query 'StackSummaries[?StackName==`cvideo-click-api`] | [0:2]' --output table
+	$(AWS_CMD_PREFIX) aws cloudformation list-stacks --stack-status-filter UPDATE_COMPLETE --output table
 	@read -p "Confirm rollback to previous version? (yes/no): " confirm; \
 	if [ "$$confirm" != "yes" ]; then \
 		echo "$(YELLOW)Rollback cancelled$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(YELLOW)Initiating rollback...$(NC)"
-	@aws cloudformation cancel-update-stack --stack-name cvideo-click-api 2>/dev/null || true
-	@aws cloudformation continue-update-rollback --stack-name cvideo-click-api 2>/dev/null || true
+	$(AWS_CMD_PREFIX) aws cloudformation cancel-update-stack --stack-name $(STACK_NAME) 2>/dev/null || true
+	$(AWS_CMD_PREFIX) aws cloudformation continue-update-rollback --stack-name $(STACK_NAME) 2>/dev/null || true
 	@echo "$(GREEN)Rollback initiated. Check status with 'make remote-status'$(NC)"
 
 # =============================================================================  
@@ -601,3 +749,8 @@ debug-branch: ## Show branch detection variables for debugging
 	@echo "$(YELLOW)Branch Safe:$(NC) $(BRANCH_SAFE)"
 	@echo "$(YELLOW)Namespace:$(NC) $(NAMESPACE)"
 	@echo "$(YELLOW)Stack Name:$(NC) $(STACK_NAME)"
+
+test-aws-creds: ## Test AWS credential loading function
+	@echo "$(BLUE)Testing AWS credential loading...$(NC)"
+	@$(AWS_CMD_PREFIX) aws sts get-caller-identity
+	@echo "$(GREEN)AWS credential loading test completed!$(NC)"

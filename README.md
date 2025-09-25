@@ -13,19 +13,28 @@ Code (IaC) principles and serverless architecture.
    # Edit .secrets with your AWS credentials
    ```
 
-1. **Initialize Project**
+2. **Initialize Project**
 
    ```bash
    make init       # Install dependencies and verify AWS access
    make validate   # Run code quality checks
    ```
 
-1. **Deploy Infrastructure**
+3. **Deploy and Test (Recommended)**
 
    ```bash
-   make plan       # Preview infrastructure changes
-   make deploy     # Deploy to AWS
+   make remote-deploy         # Deploy Lambda functions to AWS
+   make remote-test           # Test deployed API endpoints
+   make remote-status         # Check deployment health
    ```
+
+4. **Clean Up When Done**
+
+   ```bash
+   make remote-destroy            # Safely remove AWS resources
+   ```
+
+**All operations use simple `make` commands with automatic credential handling and branch isolation!**
 
 ## 📋 Project Structure
 
@@ -48,6 +57,37 @@ cvideo-click-api/
 ```
 
 ## 🛠️ Development Workflow
+
+### Make-Based Operations
+
+All project operations use `make` commands for consistency and automation:
+
+```bash
+# 🏗️ Basic Operations
+make help                  # Show all available commands
+make init                  # Initialize project and dependencies
+make clean                 # Clean temporary files and caches
+make validate              # Run all code quality checks
+
+# 🚀 Quick Deploy & Test Cycle  
+make remote-deploy         # Deploy to AWS (branch-isolated)
+make remote-test           # Test deployed resources
+make remote-destroy        # Clean up when done
+
+# 📋 Complete Create/Update/Destroy Cycle
+make remote-build          # Build and validate
+make remote-deploy         # Deploy infrastructure  
+make remote-status         # Check deployment health
+make remote-cleanup-failed # Clean up failed deployments (if needed)
+make remote-destroy        # Destroy resources safely
+```
+
+**Key Benefits:**
+
+- **Automatic Credential Loading**: All `make remote-*` commands automatically load AWS credentials from `.secrets`
+- **Branch Isolation**: Resources are namespaced by git branch for safe parallel development
+- **Error Handling**: Built-in validation and error recovery
+- **Consistent Commands**: Same commands work across all environments
 
 ### Code Quality
 
@@ -99,10 +139,19 @@ make local-start
 ### Remote AWS Testing
 
 ```bash
-make remote-test           # Test deployed API endpoints
+# Comprehensive Testing (Recommended)
+make remote-test           # Complete integration tests against deployed resources
+                          # ✅ Tests AWS credentials, Lambda functions, API endpoints
+                          # ✅ Branch-aware: tests your specific deployment
+
+# Health Monitoring  
+make remote-status         # Overall deployment status with resource health
+make remote-health-check   # Detailed health checks for all AWS resources
+make remote-logs           # View recent Lambda function logs with filtering
+
+# AWS Access Verification
 make check-aws             # Verify AWS credentials and permissions
-make remote-status         # Check AWS deployment status
-make remote-logs           # View Lambda function logs
+make remote-validate       # Validate AWS resources and deployment readiness
 ```
 
 ## 🚀 Deployment Workflows
@@ -124,22 +173,37 @@ make local-deploy          # Creates local test stack
 
 ### Remote AWS Deployment (Production)
 
+All remote AWS operations are simplified through `make` commands with automatic credential handling and branch isolation:
+
 ```bash
-# 1. Build and validate for AWS
-make remote-build          # Build with AWS containers
-make check-aws             # Verify AWS credentials
+# Quick Deploy (Recommended)
+make remote-deploy-sam-only    # Deploy Lambda-only stack with branch namespace
+make remote-test               # Comprehensive integration tests
+make remote-status             # Check deployment health
 
-# 2. Plan infrastructure changes
-make plan                  # Terraform plan
+# Complete Deployment Workflow
+make remote-build              # Build and validate with full checks
+make remote-validate           # Validate AWS credentials and templates  
+make remote-deploy             # Deploy SAM application to AWS
+make remote-health-check       # Perform detailed health checks
 
-# 3. Deploy to AWS
-make remote-deploy         # Full deployment (Terraform + SAM)
-make deploy-function FUNCTION=HelloWorldFunction  # Deploy specific function
+# Deployment Variations
+make remote-deploy-simple      # Interactive guided deployment
+make remote-deploy-prod        # Production deployment with confirmations
 
-# 4. Verify deployment
-make remote-test           # Test deployed API
-make remote-status         # Check deployment status
+# Management Commands
+make remote-logs               # View recent Lambda logs
+make remote-status             # Check deployment status and health
+make remote-destroy            # Safely destroy resources (with confirmation)
+make remote-cleanup-failed     # Clean up failed deployments
+make remote-rollback           # Rollback to previous version
 ```
+
+**Branch Isolation**: All deployments automatically use branch-specific naming:
+
+- Branch `develop` → Stack: `cvideo-click-api-develop`
+- Branch `feature/auth` → Stack: `cvideo-click-api-feature-auth`
+- Lambda functions include branch namespace for safe parallel development
 
 ## 🤖 CI/CD with GitHub Actions & ACT
 

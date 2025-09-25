@@ -1,14 +1,14 @@
 # Terraform configuration for CVIDEO-CLICK-API
 terraform {
   required_version = ">= 1.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
   }
-  
+
   # Use S3 backend for state management - uses artifacts bucket
   backend "s3" {
     bucket         = "cvideo-sam-artifacts-20250924"
@@ -22,7 +22,7 @@ terraform {
 # AWS Provider
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Project     = "cvideo-click-api"
@@ -36,7 +36,7 @@ provider "aws" {
 provider "aws" {
   alias  = "replica"
   region = var.aws_region == "us-east-1" ? "us-west-2" : "us-east-1"
-  
+
   default_tags {
     tags = {
       Project     = "cvideo-click-api"
@@ -437,11 +437,11 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
 resource "aws_api_gateway_rest_api" "api" {
   name        = "${var.project_name}-gateway"
   description = "API Gateway for CVIDEO-CLICK-API"
-  
+
   endpoint_configuration {
     types = ["REGIONAL"]
   }
-  
+
   lifecycle {
     create_before_destroy = true
   }
@@ -451,7 +451,7 @@ resource "aws_api_gateway_rest_api" "api" {
 resource "aws_api_gateway_deployment" "api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   stage_name  = var.environment
-  
+
   # Trigger redeployment when API changes
   triggers = {
     redeployment = sha1(jsonencode([

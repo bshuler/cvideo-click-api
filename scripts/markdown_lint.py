@@ -136,7 +136,7 @@ def check_markdown_file(file_path: str, fix: bool = False) -> Tuple[bool, str]:
         return False, f"❌ Error processing {file_path}: {str(e)}"
 
 
-def main():
+def main() -> int:
     """Main function to run markdown linting."""
     import argparse
 

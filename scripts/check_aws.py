@@ -6,7 +6,7 @@ import sys
 from botocore.exceptions import ClientError, NoCredentialsError
 
 
-def check_aws_credentials():
+def check_aws_credentials() -> bool:
     """Check if AWS credentials are properly configured."""
     print("🔐 Checking AWS developer credentials...")
 
@@ -30,7 +30,7 @@ def check_aws_credentials():
         return False
 
 
-def check_s3_access():
+def check_s3_access() -> bool:
     """Check S3 access permissions."""
     print("\n🗂️  Checking S3 access...")
 
@@ -46,7 +46,7 @@ def check_s3_access():
             )
             return True
         except ClientError as bucket_error:
-            if bucket_error.response["Error"]["Code"] == "404":
+            if bucket_error.response.get("Error", {}).get("Code") == "404":
                 print(f"⚠️  SAM bucket '{sam_bucket}' not found, but S3 access works!")
                 print(
                     "   (Bucket will be created automatically during first deployment)"
@@ -56,7 +56,7 @@ def check_s3_access():
                 raise bucket_error
 
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
+        error_code = e.response.get("Error", {}).get("Code")
         if error_code == "AccessDenied":
             print(
                 "❌ S3 access denied! Check IAM permissions for SAM deployment bucket."
@@ -70,7 +70,7 @@ def check_s3_access():
         return False
 
 
-def check_lambda_access():
+def check_lambda_access() -> bool:
     """Check Lambda access permissions."""
     print("\n⚡ Checking Lambda access...")
 
@@ -85,7 +85,7 @@ def check_lambda_access():
         return True
 
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
+        error_code = e.response.get("Error", {}).get("Code")
         if error_code == "AccessDenied":
             print("❌ Lambda access denied! Check IAM permissions.")
         else:
@@ -93,7 +93,7 @@ def check_lambda_access():
         return False
 
 
-def check_api_gateway_access():
+def check_api_gateway_access() -> bool:
     """Check API Gateway access permissions."""
     print("\n🌐 Checking API Gateway access...")
 
@@ -108,7 +108,7 @@ def check_api_gateway_access():
         return True
 
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
+        error_code = e.response.get("Error", {}).get("Code")
         if error_code == "AccessDenied":
             print("❌ API Gateway access denied! Check IAM permissions.")
         else:
@@ -116,7 +116,7 @@ def check_api_gateway_access():
         return False
 
 
-def main():
+def main() -> None:
     """Run AWS developer credential checks."""
     print("🚀 Checking AWS Developer Credentials")
     print("💡 Verifying your .secrets file has proper permissions")

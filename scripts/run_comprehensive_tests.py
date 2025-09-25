@@ -9,9 +9,12 @@ import sys
 import subprocess
 import argparse
 import shlex
+from typing import Union
 
 
-def run_command(cmd, description, capture_output=False):
+def run_command(
+    cmd: str, description: str, capture_output: bool = False
+) -> Union[bool, str, None]:
     """Run a command and handle output."""
     print(f"🔄 {description}...")
 
@@ -41,7 +44,7 @@ def run_command(cmd, description, capture_output=False):
         return False
 
 
-def run_local_tests():
+def run_local_tests() -> list:
     """Run all local tests."""
     print("🏠 Running Local Tests")
     print("=" * 40)
@@ -62,7 +65,7 @@ def run_local_tests():
     return results
 
 
-def run_local_deployment_tests():
+def run_local_deployment_tests() -> list:
     """Run local deployment tests."""
     print("🏗️  Running Local Deployment Tests")
     print("=" * 40)
@@ -80,8 +83,8 @@ def run_local_deployment_tests():
     return results
 
 
-def run_remote_tests():
-    """Run tests against remote AWS resources."""
+def run_remote_tests() -> list:
+    """Run remote/cloud tests."""
     print("☁️  Running Remote AWS Tests")
     print("=" * 40)
 
@@ -104,7 +107,7 @@ def run_remote_tests():
     return results
 
 
-def run_ci_simulation():
+def run_ci_simulation() -> list:
     """Simulate CI/CD pipeline locally."""
     print("🤖 Simulating CI/CD Pipeline")
     print("=" * 40)
@@ -124,7 +127,7 @@ def run_ci_simulation():
     return results
 
 
-def print_summary(all_results):
+def print_summary(all_results) -> int:
     """Print test summary."""
     print("\n" + "=" * 60)
     print("📊 TEST SUMMARY")
@@ -152,7 +155,7 @@ def print_summary(all_results):
         return 1
 
 
-def main():
+def main() -> int:
     """Main test runner."""
     parser = argparse.ArgumentParser(
         description="Comprehensive test runner for CVIDEO-CLICK-API"

@@ -5,7 +5,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 
-def check_lambda_functions():
+def check_lambda_functions() -> bool:
     """Check status of Lambda functions."""
     print("⚡ Checking Lambda Functions...")
 
@@ -49,7 +49,7 @@ def check_lambda_functions():
         return False
 
 
-def check_api_gateway():
+def check_api_gateway() -> bool:
     """Check status of API Gateway."""
     print("\n🌐 Checking API Gateway...")
 
@@ -93,7 +93,7 @@ def check_api_gateway():
         return False
 
 
-def check_s3_buckets():
+def check_s3_buckets() -> bool:
     """Check status of S3 buckets."""
     print("\n🗂️  Checking S3 Buckets...")
 
@@ -126,7 +126,7 @@ def check_s3_buckets():
                 print("      Status: Accessible (limited metadata access)")
 
         except ClientError as bucket_error:
-            if bucket_error.response["Error"]["Code"] == "404":
+            if bucket_error.response.get("Error", {}).get("Code") == "404":
                 print(f"   ℹ️  SAM bucket '{sam_bucket}' not found")
                 print(
                     "      This is normal - bucket is created automatically "
@@ -140,7 +140,7 @@ def check_s3_buckets():
         return True
 
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
+        error_code = e.response.get("Error", {}).get("Code")
         if error_code == "AccessDenied":
             print("   ⚠️  S3 access limited - this is OK for SAM deployments!")
             print(
@@ -153,7 +153,7 @@ def check_s3_buckets():
             return False
 
 
-def check_iam_roles():
+def check_iam_roles() -> bool:
     """Check IAM roles for Lambda functions."""
     print("\n🔐 Checking IAM Roles...")
 
@@ -183,8 +183,8 @@ def check_iam_roles():
         return False
 
 
-def main():
-    """Main function to check all service statuses."""
+def main() -> None:
+    """Main function to check all AWS resources."""
     print("🔍 Checking CVIDEO-CLICK-API Deployment Status")
     print("=" * 55)
 

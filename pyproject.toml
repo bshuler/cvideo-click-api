@@ -73,6 +73,12 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 ignore_missing_imports = true
+exclude = [
+    ".aws-sam/",
+    ".pytest_cache/",
+    "build/",
+    "dist/"
+]
 
 # AWS/boto3 specific settings
 [tool.mypy-boto3]

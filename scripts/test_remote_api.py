@@ -8,9 +8,10 @@ import sys
 import boto3
 import requests
 from botocore.exceptions import ClientError
+from typing import Optional, Any
 
 
-def get_api_gateway_url():
+def get_api_gateway_url() -> Optional[str]:
     """Get the API Gateway URL from CloudFormation outputs."""
     try:
         cf = boto3.client("cloudformation")
@@ -36,7 +37,12 @@ def get_api_gateway_url():
         return None
 
 
-def test_endpoint(url, method="GET", data=None, expected_status=200):
+def test_endpoint(
+    url: str,
+    method: str = "GET",
+    data: Optional[Any] = None,
+    expected_status: int = 200,
+) -> bool:
     """Test a specific API endpoint."""
     try:
         if method == "GET":
@@ -64,7 +70,7 @@ def test_endpoint(url, method="GET", data=None, expected_status=200):
         return False
 
 
-def main():
+def main() -> None:
     """Run remote API tests."""
     print("🌐 Testing Remote API Endpoints")
     print("=" * 40)
@@ -99,11 +105,12 @@ def main():
     results = []
     for test in tests:
         print(f"🧪 Testing {test['name']}...")
+        expected_status = test.get("expected_status", 200)
         result = test_endpoint(
-            test["url"],
-            test.get("method", "GET"),
+            str(test["url"]),
+            str(test.get("method", "GET")),
             test.get("data"),
-            test.get("expected_status", 200),
+            expected_status if isinstance(expected_status, int) else 200,
         )
         results.append(result)
         print()

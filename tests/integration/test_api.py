@@ -5,7 +5,7 @@ from moto import mock_aws
 
 
 @mock_aws
-def test_hello_world_integration():
+def test_hello_world_integration() -> None:
     """Integration test for hello_world Lambda function."""
     # This is a placeholder for actual integration tests
     # In a real implementation, you would:
@@ -34,7 +34,7 @@ def test_hello_world_integration():
     assert "hello" in function_name
 
 
-def test_api_gateway_integration():
+def test_api_gateway_integration() -> None:
     """Integration test for API Gateway endpoints."""
     # This would test the actual API Gateway integration
     # In a real implementation:
