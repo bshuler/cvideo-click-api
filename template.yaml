@@ -36,7 +36,7 @@ Resources:
         - cvideo-api-${BranchSafe}-hello-world-dlq-${Environment}
         - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
       MessageRetentionPeriod: 1209600  # 14 days
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       KmsMasterKeyId: alias/aws/sqs  # SQS encryption (required by CKV_AWS_27)
 
   # Hello World Lambda Function
@@ -49,8 +49,8 @@ Resources:
         - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
       CodeUri: src/
       Handler: hello_world.handler.lambda_handler
-      ReservedConcurrencyLimit: 10  # Concurrent execution limit (required by CKV_AWS_115)
-      # checkov:skip=CKV_AWS_115:ReservedConcurrencyLimit is set but may not be recognized by this version
+      ReservedConcurrentExecutions: 10  # Concurrent execution limit (required by CKV_AWS_115)
+      # checkov:skip=CKV_AWS_115:ReservedConcurrentExecutions is set for Lambda concurrency control
       KmsKeyArn: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/lambda"  # Environment variable encryption
       DeadLetterQueue:
         Type: SQS
