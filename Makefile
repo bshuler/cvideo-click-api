@@ -1,4 +1,4 @@
-.PHONY: help init clean format lint type-check test validate validate-strict verify verify-strict check-all json-lint terraform-lint toml-lint requirements-lint gitignore-lint type-annotations-check
+.PHONY: help init clean format lint type-check test validate validate-strict verify verify-strict check-all full-test json-lint terraform-lint toml-lint requirements-lint gitignore-lint type-annotations-check
 .PHONY: local-build local-start local-stop local-status local-test local-deploy local-test-api
 .PHONY: remote-build remote-build-sam-only remote-deploy remote-deploy-simple remote-deploy-prod remote-validate remote-test remote-health-check remote-logs remote-status remote-cleanup-failed remote-destroy remote-rollback
 .PHONY: plan deploy deploy-function logs metrics status check-aws
@@ -40,7 +40,7 @@ help: ## Show this help message
 	@grep -E '^(check-aws).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Development & Testing:$(NC)"
-	@grep -E '^(format|lint|type-check|security|pylance-check|markdown-lint|markdown-fix|yaml-lint|yaml-fix|toml-lint|requirements-lint|gitignore-lint|verify|verify-strict|validate|validate-strict|check-all|test|test-unit|test-integration|test-watch|test-debug|test-security|test-comprehensive|test-local-only|test-remote-only|test-ci-only).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^(format|lint|type-check|security|pylance-check|markdown-lint|markdown-fix|yaml-lint|yaml-fix|toml-lint|requirements-lint|gitignore-lint|verify|verify-strict|validate|validate-strict|check-all|full-test|test|test-unit|test-integration|test-watch|test-debug|test-security|test-comprehensive|test-local-only|test-remote-only|test-ci-only).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Local Development & Testing:$(NC)"
 	@grep -E '^(local-build|local-start|local-stop|local-status|local-test|local-deploy|local-test-api).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
@@ -284,6 +284,36 @@ check-all: ## Complete validation - code quality, security, functional, lint, fo
 	@$(MAKE) --no-print-directory terraform-lint
 	@echo "$(GREEN)✅ COMPLETE! All validation checks passed - code quality, security, functional, lint, format$(NC)"
 	@echo "$(GREEN)🎉 Your code meets all standards: functional correctness, security, and code quality$(NC)"
+
+full-test: .secrets ## Complete end-to-end testing workflow - validation, local testing, and remote deployment testing
+	@echo "$(BLUE)🚀 Starting comprehensive full testing workflow...$(NC)"
+	@echo "$(BLUE)📋 Phase 1/5: Code Quality Validation (verify + validate + security)...$(NC)"
+	@$(MAKE) --no-print-directory verify
+	@$(MAKE) --no-print-directory validate  
+	@$(MAKE) --no-print-directory security
+	@echo "$(GREEN)✅ Phase 1 Complete: All quality gates passed$(NC)"
+	@echo ""
+	@echo "$(BLUE)🏗️  Phase 2/5: Local Build and Deployment...$(NC)"
+	@$(MAKE) --no-print-directory local-deploy
+	@echo "$(GREEN)✅ Phase 2 Complete: Local deployment successful$(NC)"
+	@echo ""
+	@echo "$(BLUE)🧪 Phase 3/5: Local Testing...$(NC)"
+	@$(MAKE) --no-print-directory local-test
+	@echo "$(GREEN)✅ Phase 3 Complete: Local testing successful$(NC)"
+	@echo ""
+	@echo "$(BLUE)🌐 Phase 4/5: Remote AWS Deployment...$(NC)"
+	@$(MAKE) --no-print-directory remote-deploy
+	@echo "$(GREEN)✅ Phase 4 Complete: Remote deployment successful$(NC)"
+	@echo ""
+	@echo "$(BLUE)🔬 Phase 5/5: Remote Integration Testing...$(NC)"
+	@$(MAKE) --no-print-directory remote-test
+	@echo "$(GREEN)✅ Phase 5 Complete: Remote testing successful$(NC)"
+	@echo ""
+	@echo "$(GREEN)🎉 FULL-TEST COMPLETE! All phases passed:$(NC)"
+	@echo "$(GREEN)   ✅ Code quality validation$(NC)"
+	@echo "$(GREEN)   ✅ Local build and testing$(NC)" 
+	@echo "$(GREEN)   ✅ Remote deployment and testing$(NC)"
+	@echo "$(GREEN)🚀 Your application is ready for production!$(NC)"
 
 # =============================================================================
 # LOCAL DEVELOPMENT & TESTING COMMANDS
