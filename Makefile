@@ -3,6 +3,7 @@
 .PHONY: remote-build remote-build-sam-only remote-deploy remote-deploy-simple remote-deploy-prod remote-validate remote-test remote-health-check remote-logs remote-status remote-cleanup-failed remote-destroy remote-rollback
 .PHONY: plan deploy deploy-function logs metrics status check-aws
 .PHONY: act-setup act-test act-deploy github-test github-deploy
+.PHONY: domain-check domain-setup domain-test dns-setup dns-test
 .DEFAULT_GOAL := help
 
 # Load environment variables (if .secrets file exists)
@@ -49,6 +50,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(GREEN)CI/CD (ACT & GitHub Actions):$(NC)"
 	@grep -E '^(act-setup|act-test|act-deploy|github-test|github-deploy).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(GREEN)Custom Domain Management:$(NC)"
+	@grep -E '^(domain-check|domain-setup|domain-test|dns-setup|dns-test).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Monitoring:$(NC)"
 	@grep -E '^(logs|metrics|status).*:.*##' Makefile | awk -F ':.*##' '{printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
@@ -404,7 +408,7 @@ remote-build: .secrets ## Build and validate for AWS deployment with comprehensi
 	fi
 	@echo "$(GREEN)Remote build validation completed successfully!$(NC)"
 
-remote-deploy: remote-build-sam-only ## Deploy SAM application to AWS with branch-specific namespace
+remote-deploy: terraform-init remote-build-sam-only ## Deploy SAM application to AWS with branch-specific namespace
 	@echo "$(BLUE)Deploying to AWS (Branch: $(CURRENT_BRANCH))...$(NC)"
 	@echo "$(YELLOW)Branch namespace: $(NAMESPACE)$(NC)"
 	@echo "$(YELLOW)Stack name: $(STACK_NAME)$(NC)"
@@ -692,9 +696,18 @@ github-deploy: ## Trigger GitHub Actions deployment workflow manually
 	@read -p "Continue with deployment? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
 	gh workflow run ci-cd.yml --ref main
 
-plan: ## Show Terraform execution plan
+# --- Terraform Initialization ---
+terraform-init: ## Initialize or reconfigure Terraform backend
+	@echo "$(BLUE)Initializing Terraform backend...$(NC)"
+	cd terraform && terraform init -input=false -reconfigure
+
+plan: terraform-init ## Show Terraform execution plan
 	@echo "$(BLUE)Planning infrastructure changes...$(NC)"
 	cd terraform && terraform plan -var-file="terraform.tfvars"
+
+plan-minimal: terraform-init ## Show minimal Terraform execution plan (custom domain only)
+	@echo "$(BLUE)Planning minimal infrastructure changes (custom domain only)...$(NC)"
+	cd terraform && terraform plan -var-file="terraform.tfvars" -var="tf_config=minimal.tf"
 
 deploy: ## Deploy infrastructure and Lambda functions
 	@echo "$(BLUE)Deploying infrastructure...$(NC)"
@@ -702,6 +715,11 @@ deploy: ## Deploy infrastructure and Lambda functions
 	@echo "$(BLUE)Deploying Lambda functions...$(NC)"
 	sam deploy --guided
 	@echo "$(GREEN)Deployment completed!$(NC)"
+
+deploy-minimal: terraform-init ## Deploy minimal infrastructure (custom domain only)
+	@echo "$(BLUE)Deploying minimal infrastructure (custom domain only)...$(NC)"
+	cd terraform && terraform apply -target=aws_route53_zone.apps_domain -target=aws_acm_certificate.apps_domain_cert -target=aws_acm_certificate_validation.apps_domain_cert -target=aws_api_gateway_domain_name.custom_domain -target=aws_route53_record.api_domain -target=aws_route53_record.cert_validation -var-file="terraform.tfvars" -auto-approve
+	@echo "$(GREEN)Minimal infrastructure deployment completed!$(NC)"
 
 deploy-function: ## Deploy specific Lambda function (usage: make deploy-function FUNCTION=function-name)
 	@if [ -z "$(FUNCTION)" ]; then \
@@ -729,6 +747,54 @@ metrics: ## View CloudWatch metrics
 status: ## Check deployment and service status
 	@echo "$(BLUE)Checking deployment status...$(NC)"
 	@python scripts/check_status.py
+
+# Custom Domain Management Commands
+domain-check: ## Check custom domain configuration and status
+	@echo "$(BLUE)Checking custom domain configuration...$(NC)"
+	@python scripts/check_domain.py
+
+domain-deploy: terraform-init ## Deploy complete custom domain infrastructure (bootstrap/admin only)
+	@echo "$(BLUE)Deploying custom domain infrastructure...$(NC)"
+	@echo "$(YELLOW)⚠️  This requires bootstrap/admin permissions for:$(NC)"
+	@echo "   - Route53 hosted zone creation"
+	@echo "   - ACM certificate management"
+	@echo "   - API Gateway custom domain creation"
+	@echo "   - Service-linked role creation"
+	@read -p "Continue with domain deployment? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	cd terraform && terraform apply -target=aws_route53_zone.apps_domain -target=aws_acm_certificate.apps_domain_cert -target=aws_acm_certificate_validation.apps_domain_cert -target=aws_route53_record.cert_validation -target=aws_api_gateway_domain_name.custom_domain -target=aws_api_gateway_base_path_mapping.custom_domain_mapping -target=aws_route53_record.api_domain -var-file="terraform.tfvars" --output json | cat
+
+domain-destroy: terraform-init ## Destroy custom domain infrastructure (bootstrap/admin only)
+	@echo "$(RED)⚠️  WARNING: This will destroy the custom domain infrastructure!$(NC)"
+	@echo "$(YELLOW)This will remove:$(NC)"
+	@echo "   - Custom domain mapping"
+	@echo "   - Route53 A records"
+	@echo "   - API Gateway custom domain"
+	@echo "   - (Route53 zone and certificate will be preserved)"
+	@read -p "Are you sure? Type 'destroy' to confirm: " confirm && [ "$$confirm" = "destroy" ] || exit 1
+	cd terraform && terraform destroy -target=aws_route53_record.api_domain -target=aws_api_gateway_base_path_mapping.custom_domain_mapping -target=aws_api_gateway_domain_name.custom_domain -var-file="terraform.tfvars" --output json | cat
+
+domain-status: ## Show detailed domain status including DNS propagation
+	@echo "$(BLUE)Checking domain status...$(NC)"
+	@echo "$(CYAN)📋 Certificate Status:$(NC)"
+	@aws acm describe-certificate --certificate-arn $$(cd terraform && terraform output -raw certificate_arn 2>/dev/null || echo "not-deployed") --query 'Certificate.{Status:Status,DomainName:DomainName,ValidationStatus:DomainValidationOptions[0].ValidationStatus}' --output json | cat 2>/dev/null || echo "Certificate not found"
+	@echo ""
+	@echo "$(CYAN)🌐 API Gateway Custom Domain:$(NC)"
+	@aws apigateway get-domain-names --query 'items[?contains(domainName, `apps.cvideo.click`)].{DomainName:domainName,Status:domainNameStatus,Target:regionalDomainName}' --output json | cat
+	@echo ""
+	@echo "$(CYAN)📡 DNS Resolution:$(NC)"
+	@dig +short $$(cd terraform && terraform output -raw custom_domain_url 2>/dev/null | sed 's|https://||' || echo "api-dev.apps.cvideo.click") || echo "Domain not resolving"
+
+domain-setup: ## Show DNS setup instructions for custom domains
+	@echo "$(BLUE)Custom domain setup instructions...$(NC)"
+	@python scripts/dns_management.py setup
+
+domain-test: ## Test custom domain DNS resolution and accessibility
+	@echo "$(BLUE)Testing custom domain configuration...$(NC)"
+	@python scripts/dns_management.py test
+
+dns-setup: domain-setup ## Alias for domain-setup
+
+dns-test: domain-test ## Alias for domain-test
 
 # Security check - ensure .secrets file exists and is properly configured
 .secrets:

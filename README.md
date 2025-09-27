@@ -13,14 +13,14 @@ Code (IaC) principles and serverless architecture.
    # Edit .secrets with your AWS credentials
    ```
 
-2. **Initialize Project**
+1. **Initialize Project**
 
    ```bash
    make init       # Install dependencies and verify AWS access
    make validate   # Run code quality checks
    ```
 
-3. **Deploy and Test (Recommended)**
+1. **Deploy and Test (Recommended)**
 
    ```bash
    make remote-deploy         # Deploy Lambda functions to AWS
@@ -28,13 +28,100 @@ Code (IaC) principles and serverless architecture.
    make remote-status         # Check deployment health
    ```
 
-4. **Clean Up When Done**
+1. **Clean Up When Done**
 
    ```bash
    make remote-destroy            # Safely remove AWS resources
    ```
 
 **All operations use simple `make` commands with automatic credential handling and branch isolation!**
+
+## 🌐 Custom Domain Access
+
+This project automatically configures custom domains for easy access to your API deployments:
+
+**Domain Pattern**: `{stack-name}.apps.cvideo.click`
+
+- **Development**: `api-dev.apps.cvideo.click`
+- **Staging**: `api-staging.apps.cvideo.click`
+- **Production**: `api-prod.apps.cvideo.click`
+
+### Domain Setup (One-Time Bootstrap)
+
+⚠️ **Important**: Domain setup requires **bootstrap/admin credentials** with elevated permissions.
+
+#### Prerequisites
+
+- AWS account with admin access
+- Domain ownership of `cvideo.click`
+- Bootstrap user credentials (separate from developer `.secrets`)
+
+#### Setup Process
+
+1. **Deploy Domain Infrastructure** (Bootstrap/Admin Only):
+
+   ```bash
+   # Switch to admin/bootstrap credentials
+   make domain-deploy     # Creates Route53 zone, ACM cert, API Gateway custom domain
+   ```
+
+   This creates:
+
+   - Route53 hosted zone for `apps.cvideo.click`
+   - Wildcard SSL certificate for `*.apps.cvideo.click`
+   - API Gateway custom domain for `api-dev.apps.cvideo.click`
+   - DNS validation records and routing
+
+1. **Configure Parent Domain** (One-time DNS delegation):
+
+   ```bash
+   make domain-setup      # Shows nameserver configuration instructions
+   ```
+
+   Add these NS records to your `cvideo.click` domain:
+
+   ```dns
+   apps.cvideo.click  NS  ns-998.awsdns-60.net
+   apps.cvideo.click  NS  ns-268.awsdns-33.com
+   apps.cvideo.click  NS  ns-1996.awsdns-57.co.uk
+   apps.cvideo.click  NS  ns-1283.awsdns-32.org
+   ```
+
+1. **Verify Setup**:
+
+   ```bash
+   make domain-check      # Comprehensive domain validation
+   make domain-status     # Infrastructure status
+   make domain-test       # DNS and SSL connectivity test
+   ```
+
+#### Developer Usage (After Bootstrap)
+
+Once domain infrastructure is deployed, developers can:
+
+```bash
+# Deploy application changes (no domain changes needed)
+make remote-deploy     # Deploys Lambda functions to existing custom domain
+
+# Monitor domain health
+make domain-check      # Verify domain is working
+make domain-status     # Check certificate and DNS status
+```
+
+#### Permission Requirements
+
+| Operation | User Type | Required Permissions |
+|-----------|-----------|---------------------|
+| `make domain-deploy` | Bootstrap/Admin | `route53:CreateHostedZone`, `acm:*`, `apigateway:CreateDomainName`, `iam:CreateServiceLinkedRole` |
+| `make remote-deploy` | Developer | `lambda:*`, `cloudformation:*`, `s3:*` (application buckets) |
+| `make domain-check` | Developer | `route53:ListResourceRecordSets`, `acm:DescribeCertificate`, `apigateway:GetDomainNames` |
+
+### Using Custom Domains
+
+Once configured, your API is accessible at:
+
+- **Custom Domain**: `https://api-dev.apps.cvideo.click/hello`
+- **AWS Gateway**: `https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/hello`
 
 ## 📋 Project Structure
 

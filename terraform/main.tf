@@ -15,7 +15,21 @@ terraform {
     key            = "terraform-state/cvideo-click-api/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    # dynamodb_table - state locking disabled for single developer use
+  }
+}
+
+# Route53 hosted zone for apps.cvideo.click
+resource "aws_route53_zone" "apps_domain" {
+  # checkov:skip=CKV2_AWS_38:DNSSEC signing optional for development environments
+  # checkov:skip=CKV2_AWS_39:DNS query logging optional for development environments
+  name    = var.apps_domain_name
+  comment = "Hosted zone for ${var.project_name} application deployments"
+
+  tags = {
+    Name        = "${var.project_name}-apps-zone"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
@@ -67,6 +81,18 @@ variable "project_name" {
   description = "Project name for resource naming"
   type        = string
   default     = "cvideo-api"
+}
+
+variable "apps_domain_name" {
+  description = "Base domain name for application deployments (e.g., apps.cvideo.click)"
+  type        = string
+  default     = "apps.cvideo.click"
+}
+
+variable "stack_name" {
+  description = "Stack name for subdomain routing (e.g., api-dev for api-dev.apps.cvideo.click)"
+  type        = string
+  default     = "api-dev"
 }
 
 # S3 Bucket for API assets (if needed)
@@ -464,10 +490,112 @@ resource "aws_api_gateway_deployment" "api_deployment" {
   }
 }
 
+
+
+# ACM Certificate for *.apps.cvideo.click
+resource "aws_acm_certificate" "apps_domain_cert" {
+  domain_name               = var.apps_domain_name
+  subject_alternative_names = ["*.${var.apps_domain_name}"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "${var.project_name}-wildcard-cert"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# Route 53 records for ACM certificate validation
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.apps_domain_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.apps_domain.zone_id
+}
+
+# ACM certificate validation
+resource "aws_acm_certificate_validation" "apps_domain_cert" {
+  certificate_arn         = aws_acm_certificate.apps_domain_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+
+  timeouts {
+    create = "5m"
+  }
+}
+
+# API Gateway Custom Domain Name
+resource "aws_api_gateway_domain_name" "custom_domain" {
+  domain_name              = "${var.stack_name}.${var.apps_domain_name}"
+  regional_certificate_arn = aws_acm_certificate_validation.apps_domain_cert.certificate_arn
+  security_policy          = "TLS_1_2"  # Modern security policy (required by CKV_AWS_206)
+
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+
+  depends_on = [aws_acm_certificate_validation.apps_domain_cert]
+
+  tags = {
+    Name        = "${var.project_name}-${var.stack_name}-domain"
+    Project     = var.project_name
+    Environment = var.environment
+    StackName   = var.stack_name
+  }
+}
+
+# Base Path Mapping
+resource "aws_api_gateway_base_path_mapping" "custom_domain_mapping" {
+  api_id      = aws_api_gateway_rest_api.api.id
+  stage_name  = aws_api_gateway_deployment.api_deployment.stage_name
+  domain_name = aws_api_gateway_domain_name.custom_domain.domain_name
+}
+
+# Route 53 A record for custom domain
+resource "aws_route53_record" "api_domain" {
+  zone_id = aws_route53_zone.apps_domain.zone_id
+  name    = "${var.stack_name}.${var.apps_domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_api_gateway_domain_name.custom_domain.regional_domain_name
+    zone_id                = aws_api_gateway_domain_name.custom_domain.regional_zone_id
+    evaluate_target_health = false
+  }
+}
+
 # Outputs
 output "api_gateway_url" {
   description = "API Gateway URL"
   value       = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}"
+}
+
+output "custom_domain_url" {
+  description = "Custom domain URL for API"
+  value       = "https://${aws_api_gateway_domain_name.custom_domain.domain_name}"
+}
+
+output "apps_domain_nameservers" {
+  description = "Name servers for apps.cvideo.click domain (configure these in your parent domain)"
+  value       = aws_route53_zone.apps_domain.name_servers
+}
+
+output "certificate_arn" {
+  description = "ACM certificate ARN for *.apps.cvideo.click"
+  value       = aws_acm_certificate.apps_domain_cert.arn
 }
 
 output "lambda_execution_role_arn" {
@@ -478,4 +606,9 @@ output "lambda_execution_role_arn" {
 output "s3_bucket_name" {
   description = "S3 bucket name for API assets"
   value       = aws_s3_bucket.api_assets.bucket
+}
+
+output "route53_zone_id" {
+  description = "Route 53 hosted zone ID for apps.cvideo.click"
+  value       = aws_route53_zone.apps_domain.zone_id
 }

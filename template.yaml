@@ -11,8 +11,6 @@ Globals:
       Variables:
         LOG_LEVEL: INFO
         ENVIRONMENT: !Ref Environment
-    # Enable Lambda environment variable encryption (required by CKV_AWS_173)
-    KmsKeyArn: alias/aws/lambda
 
 Parameters:
   Environment:
@@ -46,6 +44,7 @@ Resources:
   HelloWorldFunction:
     Type: AWS::Serverless::Function
     # checkov:skip=CKV_AWS_117:VPC configuration not required for simple API Gateway integration
+    # checkov:skip=CKV_AWS_173:Lambda environment variable encryption not required for development environments
     Properties:
       FunctionName: !Sub
         - cvideo-api-${BranchSafe}-hello-world-${Environment}

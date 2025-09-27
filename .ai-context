@@ -201,7 +201,36 @@ cvideo-api-bucket-us-east-1         # S3 buckets
 cvideo-api-table-{name}             # DynamoDB tables
 ```
 
-### 5. **Security Model - Developer Credentials**
+### 5. **Custom Domain Architecture**
+
+**Domain Structure**: `{stack-name}.apps.cvideo.click`
+
+- **Base Domain**: `apps.cvideo.click` - Route 53 hosted zone for all application deployments
+- **Stack Subdomains**: `api-dev.apps.cvideo.click`, `api-staging.apps.cvideo.click`, etc.
+- **Wildcard Certificate**: `*.apps.cvideo.click` - Single ACM certificate for all subdomains
+- **DNS Delegation**: Parent domain delegates `apps` subdomain to Route 53 nameservers
+
+**Infrastructure Components**:
+
+- Route 53 hosted zone for `apps.cvideo.click`
+- ACM wildcard certificate for `*.apps.cvideo.click` with DNS validation
+- API Gateway custom domain name with regional endpoint
+- Automatic Route 53 A record creation for each stack deployment
+
+**Usage Pattern**:
+
+```bash
+# Deploy infrastructure with custom domain
+make plan                    # Preview domain infrastructure
+make remote-deploy          # Deploy with custom domain
+
+# Domain management
+make domain-check           # Validate domain configuration
+make domain-setup          # Show DNS setup instructions  
+make domain-test           # Test DNS propagation and SSL
+```
+
+### 6. **Security Model - Developer Credentials**
 
 This repository uses developer credentials from the pave infrastructure project:
 
@@ -485,6 +514,13 @@ make act-test             # Run GitHub Actions tests locally
 make act-deploy           # Run GitHub Actions deployment locally
 make github-test          # Trigger GitHub Actions test workflow
 make github-deploy        # Trigger GitHub Actions deployment workflow
+
+# Custom domain management
+make domain-check         # Check domain configuration and status
+make domain-setup         # Show DNS setup instructions
+make domain-test          # Test DNS propagation and accessibility
+make dns-setup            # Alias for domain-setup
+make dns-test             # Alias for domain-test
 
 # Code quality
 make format               # Format code with Black
