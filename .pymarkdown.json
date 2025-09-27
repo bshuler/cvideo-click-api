@@ -4,16 +4,13 @@
   },
   "plugins": {
     "md036": {
-      "enabled": false
-    },
-    "md013": {
-      "enabled": false
+      "enabled": true
     },
     "md041": {
-      "enabled": false
+      "enabled": true
     },
     "md026": {
-      "enabled": false
+      "enabled": true
     }
   }
 }

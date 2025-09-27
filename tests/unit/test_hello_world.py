@@ -22,8 +22,9 @@ def test_lambda_handler_get() -> None:
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert body["message"] == "Hello, Alice!"
-    assert body["method"] == "GET"
+    assert body["success"] is True
+    assert body["data"]["message"] == "Hello, Alice!"
+    assert body["data"]["method"] == "GET"
 
 
 def test_lambda_handler_post() -> None:
@@ -39,8 +40,9 @@ def test_lambda_handler_post() -> None:
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert body["message"] == "Hi, Bob!"
-    assert body["method"] == "POST"
+    assert body["success"] is True
+    assert body["data"]["message"] == "Hi, Bob!"
+    assert body["data"]["method"] == "POST"
 
 
 def test_lambda_handler_invalid_method() -> None:
@@ -52,7 +54,8 @@ def test_lambda_handler_invalid_method() -> None:
 
     assert response["statusCode"] == 405
     body = json.loads(response["body"])
-    assert "Method DELETE not allowed" in body["error"]
+    assert body["success"] is False
+    assert "Method DELETE not allowed" in body["error"]["message"]
 
 
 def test_lambda_handler_invalid_json() -> None:
@@ -64,7 +67,8 @@ def test_lambda_handler_invalid_json() -> None:
 
     assert response["statusCode"] == 400
     body = json.loads(response["body"])
-    assert "Invalid JSON" in body["error"]
+    assert body["success"] is False
+    assert "Invalid JSON" in body["error"]["message"]
 
 
 def test_handle_get_request() -> None:
@@ -74,8 +78,9 @@ def test_handle_get_request() -> None:
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert body["message"] == "Hello, World!"
-    assert body["method"] == "GET"
+    assert body["success"] is True
+    assert body["data"]["message"] == "Hello, World!"
+    assert body["data"]["method"] == "GET"
 
 
 def test_handle_get_request_no_name() -> None:
@@ -85,7 +90,8 @@ def test_handle_get_request_no_name() -> None:
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert body["message"] == "Hello, World!"
+    assert body["success"] is True
+    assert body["data"]["message"] == "Hello, World!"
 
 
 def test_handle_post_request() -> None:
@@ -95,6 +101,7 @@ def test_handle_post_request() -> None:
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert body["message"] == "Greetings, Alice!"
-    assert body["method"] == "POST"
-    assert body["received_data"] == body_data
+    assert body["success"] is True
+    assert body["data"]["message"] == "Greetings, Alice!"
+    assert body["data"]["method"] == "POST"
+    assert body["data"]["received_data"] == body_data

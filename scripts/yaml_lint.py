@@ -8,7 +8,7 @@ for GitHub Actions workflows and other YAML files.
 
 import argparse
 import os
-import subprocess
+import subprocess_utils
 import sys
 from pathlib import Path
 from typing import List
@@ -195,17 +195,21 @@ rules:
 
             # Run yamllint on the file (check if yamllint is available)
             try:
-                result = subprocess.run(
-                    ["yamllint", "-c", str(config_file), yaml_file],
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                yamllint_path = subprocess_utils.find_executable("yamllint")
+                if not yamllint_path:
+                    print_status("❌", "yamllint not found in PATH")
+                    return False
+
+                yamllint_exit, yamllint_stdout, yamllint_stderr = (
+                    subprocess_utils.run_secure_command(
+                        [yamllint_path, "-c", str(config_file), yaml_file]
+                    )
                 )
 
-                if result.returncode != 0:
+                if yamllint_exit != 0:
                     success = False
                     print_status("❌", f"Issues found in {yaml_file}:")
-                    print(result.stdout)
+                    print(yamllint_stdout)
                 else:
                     if not quiet:
                         print_status("✅", f"{yaml_file} passes linting")

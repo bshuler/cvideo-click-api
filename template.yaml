@@ -11,6 +11,11 @@ Globals:
       Variables:
         LOG_LEVEL: INFO
         ENVIRONMENT: !Ref Environment
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
 
 Parameters:
   Environment:
@@ -28,6 +33,261 @@ Parameters:
     Description: Git branch name for namespace isolation
 
 Resources:
+  # VPC Configuration for Lambda functions (CKV_AWS_117)
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-vpc'
+
+  # Internet Gateway for VPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-igw'
+
+  # Attach Internet Gateway to VPC
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Public Subnet 1
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-public-subnet-1'
+
+  # Public Subnet 2
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-public-subnet-2'
+
+  # Private Subnet 1 for Lambda functions
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.10.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-private-subnet-1'
+
+  # Private Subnet 2 for Lambda functions
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.11.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-private-subnet-2'
+
+  # NAT Gateway 1
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  # NAT Gateway 2
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+
+  # Route Table for Public Subnets
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-public-routes'
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # Route Table for Private Subnet 1
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-private-routes-1'
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  # Route Table for Private Subnet 2
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-private-routes-2'
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  # Security Group for Lambda functions
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'cvideo-api-${Environment}-lambda-sg'
+      GroupDescription: Security group for Lambda functions
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic for Lambda functions
+      Tags:
+        - Key: Name
+          Value: !Sub 'cvideo-api-${Environment}-lambda-sg'
+
+  # KMS Key for Lambda environment variable encryption (CKV_AWS_173)
+  LambdaKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS Key for Lambda environment variable encryption
+      EnableKeyRotation: true  # Enable automatic key rotation (CKV_AWS_7)
+      KeyPolicy:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: '*'
+
+  LambdaKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/cvideo-api-${Environment}-lambda-key'
+      TargetKeyId: !Ref LambdaKMSKey
+
+  # CloudWatch Log Group for API Gateway access logging (CKV_AWS_76)
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/cvideo-api-${Environment}'
+      RetentionInDays: 14
+      KmsKeyId: !GetAtt LambdaKMSKey.Arn  # Enable KMS encryption (CKV_AWS_158)
+
+  # DynamoDB Users Table
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'cvideo-api-${Environment}-users'
+      BillingMode: PAY_PER_REQUEST  # Serverless billing
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true  # Enable backup (required by CKV_AWS_28)
+      SSESpecification:
+        SSEEnabled: true  # Enable encryption at rest (required by CKV_AWS_119)
+        KMSMasterKeyId: alias/aws/dynamodb  # Use AWS managed key for cost efficiency
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES  # Enable DynamoDB streams
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: cvideo-click-api
+
   # Dead Letter Queue for Lambda function (required by CKV_AWS_116)
   HelloWorldDLQ:
     Type: AWS::SQS::Queue
@@ -40,65 +300,180 @@ Resources:
       # Enable SQS encryption with AWS managed key (required by CKV_AWS_27)
       KmsMasterKeyId: alias/aws/sqs
 
+  # Dead Letter Queue for Login Lambda function (required by CKV_AWS_116)
+  LoginFunctionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub
+        - cvideo-api-${BranchSafe}-login-dlq-${Environment}
+        - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 300
+      # Enable SQS encryption with AWS managed key (required by CKV_AWS_27)
+      KmsMasterKeyId: alias/aws/sqs
+
   # Hello World Lambda Function
   HelloWorldFunction:
     Type: AWS::Serverless::Function
-    # checkov:skip=CKV_AWS_117:VPC configuration not required for simple API Gateway integration
-    # checkov:skip=CKV_AWS_173:Lambda environment variable encryption not required for development environments
     Properties:
       FunctionName: !Sub
         - cvideo-api-${BranchSafe}-hello-world-${Environment}
         - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
       CodeUri: src/
       Handler: hello_world.handler.lambda_handler
-      # ReservedConcurrentExecutions removed - using default unreserved concurrency to avoid account limits
-      # checkov:skip=CKV_AWS_115:Using default unreserved concurrency for account compatibility
-      # KmsKeyArn removed - using default encryption to avoid key access issues
+      ReservedConcurrentExecutions: 10  # Set reasonable concurrency limit (CKV_AWS_115)
+      KmsKeyArn: !Ref LambdaKMSKey  # Enable environment variable encryption (CKV_AWS_173)
+      VpcConfig:  # Enable VPC configuration (CKV_AWS_117)
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt HelloWorldDLQ.Arn
-      # Events temporarily removed to avoid API Gateway Service Linked Role issues
-      # Events:
-      #   HelloWorldApi:
-      #     Type: Api
-      #     Properties:
-      #       RestApiId: !Ref ApiGateway
-      #       Path: /hello
-      #       Method: GET
-      #   HelloWorldApiPost:
-      #     Type: Api
-      #     Properties:
-      #       RestApiId: !Ref ApiGateway
-      #       Path: /hello
-      #       Method: POST
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource: '*'  # Allow access to all DynamoDB tables
+            - Effect: Allow  # VPC execution permissions for Lambda
+              Action:
+                - ec2:CreateNetworkInterface
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DeleteNetworkInterface
+                - ec2:AttachNetworkInterface
+                - ec2:DetachNetworkInterface
+              Resource: '*'
+      Events:
+        HelloWorldApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /hello
+            Method: GET
+        HelloWorldApiPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /hello
+            Method: POST
 
-  # API Gateway temporarily removed to avoid Service Linked Role issues
-  # ApiGateway:
-  #   Type: AWS::Serverless::Api
-  #   Properties:
-  #     Name: !Sub
-  #       - cvideo-api-${BranchSafe}-gateway-${Environment}
-  #       - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
-  #     StageName: !Ref Environment
-  #     CacheClusterEnabled: true  # Enable caching (required by CKV_AWS_120)
-  #     CacheClusterSize: "0.5"
-  #     TracingEnabled: true  # Enable X-Ray tracing (required by CKV_AWS_73)
-  #     # AccessLogSetting removed - avoiding Service Linked Role requirement for developer account
-  #     # checkov:skip=CKV_AWS_76:Access logging disabled for developer account compatibility
-  #     Cors:
-  #       AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-  #       AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-  #       AllowOrigin: "'*'"
+  # Login Lambda Function
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub
+        - cvideo-api-${BranchSafe}-login-${Environment}
+        - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
+      CodeUri: src/
+      Handler: login.handler.lambda_handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource: '*'  # Allow access to all DynamoDB tables
+            - Effect: Allow  # VPC execution permissions for Lambda
+              Action:
+                - ec2:CreateNetworkInterface
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DeleteNetworkInterface
+                - ec2:AttachNetworkInterface
+                - ec2:DetachNetworkInterface
+              Resource: '*'
+      ReservedConcurrentExecutions: 20  # Set reasonable concurrency limit (CKV_AWS_115)
+      KmsKeyArn: !Ref LambdaKMSKey  # Enable environment variable encryption (CKV_AWS_173)
+      VpcConfig:  # Enable VPC configuration (CKV_AWS_117)
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt LoginFunctionDLQ.Arn
+      Events:
+        RegisterApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /register
+            Method: POST
+        LoginApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /login
+            Method: POST
+        RefreshApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /refresh
+            Method: POST
+        ProfileGetApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /profile
+            Method: GET
+        ProfilePutApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CVideoClickApi
+            Path: /profile
+            Method: PUT
+
+  # Explicit API Gateway (to control stage name)
+  CVideoClickApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - cvideo-api-${BranchSafe}-gateway-${Environment}
+        - BranchSafe: !Join ["-", !Split ["/", !Join ["-", !Split ["_", !Ref Branch]]]]
+      StageName: !Ref Environment  # This creates the proper stage name
+      CacheClusterEnabled: true  # Enable caching (required by CKV_AWS_120)
+      CacheClusterSize: "0.5"
+      TracingEnabled: true  # Enable X-Ray tracing (required by CKV_AWS_73)
+      AccessLogSetting:  # Enable access logging (CKV_AWS_76)
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >-
+          $context.requestId $context.requestTime $context.httpMethod $context.path
+          $context.status $context.responseLength $context.requestTime
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
 
 Outputs:
-  # ApiGatewayUrl:
-  #   Description: API Gateway endpoint URL
-  #   Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
-  #   Export:
-  #     Name: !Sub ${AWS::StackName}-ApiGatewayUrl
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL for the SAM API
+    Value: !Sub "https://${CVideoClickApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiGatewayUrl
 
   HelloWorldFunctionArn:
     Description: Hello World Lambda Function ARN
     Value: !GetAtt HelloWorldFunction.Arn
     Export:
       Name: !Sub ${AWS::StackName}-HelloWorldFunctionArn
+
+  LoginFunctionArn:
+    Description: Login Lambda Function ARN
+    Value: !GetAtt LoginFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-LoginFunctionArn

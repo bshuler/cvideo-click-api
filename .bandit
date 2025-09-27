@@ -1,0 +1,3 @@
+# Bandit configuration for security scanning  
+# Fix all security issues, no skips allowed
+skips: []

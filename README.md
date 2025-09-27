@@ -5,7 +5,7 @@ Code (IaC) principles and serverless architecture.
 
 ## 🚀 Quick Start
 
-1. **Clone and Setup**
+1. Clone and setup:
 
    ```bash
    cd cvideo-click-api
@@ -13,14 +13,14 @@ Code (IaC) principles and serverless architecture.
    # Edit .secrets with your AWS credentials
    ```
 
-1. **Initialize Project**
+1. Initialize project:
 
    ```bash
    make init       # Install dependencies and verify AWS access
    make validate   # Run code quality checks
    ```
 
-1. **Deploy and Test (Recommended)**
+1. Deploy and test (recommended):
 
    ```bash
    make remote-deploy         # Deploy Lambda functions to AWS
@@ -28,27 +28,31 @@ Code (IaC) principles and serverless architecture.
    make remote-status         # Check deployment health
    ```
 
-1. **Clean Up When Done**
+1. Clean up when done:
 
    ```bash
    make remote-destroy            # Safely remove AWS resources
    ```
 
-**All operations use simple `make` commands with automatic credential handling and branch isolation!**
+**All operations use simple `make` commands with automatic credential handling
+and branch isolation!**
 
 ## 🌐 Custom Domain Access
 
-This project automatically configures custom domains for easy access to your API deployments:
+This project automatically configures custom domains for easy access to your
+API deployments:
 
 **Domain Pattern**: `{stack-name}.apps.cvideo.click`
 
 - **Development**: `api-dev.apps.cvideo.click`
 - **Staging**: `api-staging.apps.cvideo.click`
-- **Production**: `api-prod.apps.cvideo.click`
+- **Production**: `api-main.apps.cvideo.click` (requires domain approval for
+  production deployment)
 
 ### Domain Setup (One-Time Bootstrap)
 
-⚠️ **Important**: Domain setup requires **bootstrap/admin credentials** with elevated permissions.
+⚠️ **Important**: Domain setup requires **bootstrap/admin credentials** with
+elevated permissions.
 
 #### Prerequisites
 
@@ -112,9 +116,9 @@ make domain-status     # Check certificate and DNS status
 
 | Operation | User Type | Required Permissions |
 |-----------|-----------|---------------------|
-| `make domain-deploy` | Bootstrap/Admin | `route53:CreateHostedZone`, `acm:*`, `apigateway:CreateDomainName`, `iam:CreateServiceLinkedRole` |
-| `make remote-deploy` | Developer | `lambda:*`, `cloudformation:*`, `s3:*` (application buckets) |
-| `make domain-check` | Developer | `route53:ListResourceRecordSets`, `acm:DescribeCertificate`, `apigateway:GetDomainNames` |
+| `make domain-deploy` | Bootstrap/Admin | Route53, ACM, API Gateway, IAM roles |
+| `make remote-deploy` | Developer | Lambda, CloudFormation, S3 buckets |
+| `make domain-check` | Developer | Route53 read, ACM read, API Gateway read |
 
 ### Using Custom Domains
 
@@ -171,8 +175,10 @@ make remote-destroy        # Destroy resources safely
 
 **Key Benefits:**
 
-- **Automatic Credential Loading**: All `make remote-*` commands automatically load AWS credentials from `.secrets`
-- **Branch Isolation**: Resources are namespaced by git branch for safe parallel development
+- **Automatic Credential Loading**: All `make remote-*` commands automatically
+  load AWS credentials from `.secrets`
+- **Branch Isolation**: Resources are namespaced by git branch for safe
+  parallel development
 - **Error Handling**: Built-in validation and error recovery
 - **Consistent Commands**: Same commands work across all environments
 
@@ -180,10 +186,37 @@ make remote-destroy        # Destroy resources safely
 
 ```bash
 make format      # Format code with Black (88-char lines)
-make lint        # Lint with Flake8
-make type-check  # Type checking with mypy
-make validate    # Run all quality checks
+make lint        # Lint with Flake8 (minimal ignores: E203/W503)
+make type-check  # Type checking with mypy (relaxed for boto3)
+make pylance-check # Enhanced type checking with Pylance/Pyright
+make security    # Comprehensive security scanning (Bandit + Checkov)
+make validate    # Run core validation (format + lint + type-check + yaml + json)
+make verify      # Verify all file formats (includes toml, requirements, gitignore)
+make validate-strict # Complete validation with security scanning
+make verify-strict    # Strict verification with all tools and enhanced checking
 ```
+
+#### Code Quality Tools
+
+- **Black Formatter**: 88-character line length, consistent formatting
+- **Flake8 Linting**: Minimal ignores (E203/W503 for Black compatibility only)
+- **MyPy Type Checking**: Relaxed settings for boto3 compatibility, strict elsewhere
+- **Pylance/Pyright**: Enhanced type checking with MCP integration, excludes annotation requirements
+- **Bandit Security**: Python security scanning (medium/high severity focus)
+- **Checkov Security**: Infrastructure security scanning (respects .gitignore)
+
+#### File Format Validation
+
+- **Yamllint**: YAML files with 120-character line limits
+- **JSON Validation**: Syntax and format checking
+- **TOML Validation**: pyproject.toml and other TOML files
+- **Requirements Validation**: requirements.txt format checking
+- **Gitignore Validation**: .gitignore file format and syntax
+- **Terraform Validation**: Format checking with warning tolerance
+
+#### Documentation Standards
+
+- **Pymarkdown**: Markdown linting with MD013 (line length) disabled for flexibility
 
 ## 🧪 Testing Strategy
 
@@ -260,7 +293,8 @@ make local-deploy          # Creates local test stack
 
 ### Remote AWS Deployment (Production)
 
-All remote AWS operations are simplified through `make` commands with automatic credential handling and branch isolation:
+All remote AWS operations are simplified through `make` commands with automatic
+credential handling and branch isolation:
 
 ```bash
 # Quick Deploy (Recommended)
@@ -397,10 +431,13 @@ AWS_DEFAULT_REGION=us-east-1
 
 ### Python Standards
 
-- **Black Formatter**: 88-character line length
-- **Flake8 Linting**: E203/W503 exceptions for Black compatibility
-- **mypy Type Checking**: Relaxed settings for boto3 compatibility
-- **pytest Testing**: With coverage reporting
+- **Black Formatter**: 88-character line length, consistent formatting
+- **Flake8 Linting**: E203/W503 exceptions only (for Black compatibility)
+- **MyPy Type Checking**: Relaxed settings for boto3 compatibility, strict elsewhere
+- **Pylance/Pyright**: Enhanced type checking, annotation requirements excluded
+- **Bandit Security**: Medium/high severity Python security scanning
+- **Checkov Security**: Infrastructure security scanning respecting .gitignore
+- **pytest Testing**: With coverage reporting and comprehensive test suite
 
 ## 🔍 Lambda Function Development
 

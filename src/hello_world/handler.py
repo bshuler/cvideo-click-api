@@ -10,11 +10,12 @@ from typing import Dict, Any
 # Setup path for shared modules
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # noqa: E402
 
-from shared.utils import (  # noqa: E402
-    setup_logging,
-    create_response,
-    create_error_response,
-)
+import shared.utils  # noqa: E402
+
+# Import specific functions to avoid bcrypt dependency
+setup_logging = shared.utils.setup_logging
+create_response = shared.utils.create_response
+create_error_response = shared.utils.create_error_response
 
 logger = setup_logging(__name__)
 
@@ -50,7 +51,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if http_method == "GET":
             return handle_get_request(query_params)
         elif http_method == "POST":
-            body = json.loads(event.get("body", "{}"))
+            body_str = event.get("body")
+            if body_str is None:
+                body = {}
+            else:
+                body = json.loads(body_str)
             return handle_post_request(body)
         else:
             return create_error_response(

@@ -11,18 +11,18 @@ terraform {
 
   # Use S3 backend for state management - uses artifacts bucket
   backend "s3" {
-    bucket         = "cvideo-sam-artifacts-20250924"
-    key            = "terraform-state/cvideo-click-api/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket  = "cvideo-sam-artifacts-20250924"
+    key     = "terraform-state/cvideo-click-api/terraform.tfstate"
+    region  = "us-east-1"
+    encrypt = true
     # dynamodb_table - state locking disabled for single developer use
   }
 }
 
 # Route53 hosted zone for apps.cvideo.click
 resource "aws_route53_zone" "apps_domain" {
-  # checkov:skip=CKV2_AWS_38:DNSSEC signing optional for development environments
-  # checkov:skip=CKV2_AWS_39:DNS query logging optional for development environments
+  # checkov:skip=CKV2_AWS_38:DNSSEC signing not required for development environments
+  # checkov:skip=CKV2_AWS_39:DNS query logging not required for development environments
   name    = var.apps_domain_name
   comment = "Hosted zone for ${var.project_name} application deployments"
 
@@ -280,12 +280,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "api_assets_replica_lifecycle" 
     id     = "delete_old_versions"
     status = "Enabled"
 
-    filter {
-      prefix = ""
-    }
-
     abort_incomplete_multipart_upload {
-      days_after_initiation = 7
+      days_after_initiation = 1
     }
 
     noncurrent_version_expiration {
@@ -342,12 +338,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "api_assets_lifecycle" {
     id     = "delete_old_versions"
     status = "Enabled"
 
-    filter {
-      prefix = ""
-    }
-
     abort_incomplete_multipart_upload {
-      days_after_initiation = 7
+      days_after_initiation = 1
     }
 
     noncurrent_version_expiration {
@@ -541,7 +533,7 @@ resource "aws_acm_certificate_validation" "apps_domain_cert" {
 resource "aws_api_gateway_domain_name" "custom_domain" {
   domain_name              = "${var.stack_name}.${var.apps_domain_name}"
   regional_certificate_arn = aws_acm_certificate_validation.apps_domain_cert.certificate_arn
-  security_policy          = "TLS_1_2"  # Modern security policy (required by CKV_AWS_206)
+  security_policy          = "TLS_1_2" # Modern security policy (required by CKV_AWS_206)
 
   endpoint_configuration {
     types = ["REGIONAL"]

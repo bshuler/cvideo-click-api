@@ -6,9 +6,9 @@ Helps with DNS setup and troubleshooting for *.apps.cvideo.click domains.
 
 import sys
 import boto3
-import subprocess
 from typing import List, Optional
 from botocore.exceptions import ClientError
+from subprocess_utils import run_secure_command, find_executable
 
 
 def get_nameservers() -> Optional[List[str]]:
@@ -92,22 +92,25 @@ def test_dns_delegation() -> bool:
     print("\n🔍 Testing DNS delegation...")
 
     try:
+        # Find dig executable securely
+        dig_path = find_executable("dig")
+        if not dig_path:
+            print("❌ dig command not found in PATH")
+            return False
+
         # Test NS record resolution
-        result = subprocess.run(
-            ["dig", "+short", "NS", "apps.cvideo.click"],
-            capture_output=True,
-            text=True,
+        exit_code, stdout, stderr = run_secure_command(
+            [dig_path, "+short", "NS", "apps.cvideo.click"],
             timeout=10,
+            capture_output=True,
         )
 
-        if result.returncode != 0:
+        if exit_code != 0:
             print("❌ dig command failed")
             return False
 
         ns_records = [
-            line.strip().rstrip(".")
-            for line in result.stdout.strip().split("\n")
-            if line.strip()
+            line.strip(".") for line in stdout.strip().split("\n") if line.strip()
         ]
 
         if not ns_records:
@@ -132,7 +135,7 @@ def test_dns_delegation() -> bool:
 
         return True
 
-    except subprocess.TimeoutExpired:
+    except TimeoutError:
         print("❌ DNS query timed out")
         return False
     except FileNotFoundError:
@@ -153,31 +156,41 @@ def check_domain_resolution() -> None:
 
     # Get custom domain from Terraform
     try:
-        result = subprocess.run(
-            ["terraform", "output", "-raw", "custom_domain_url"],
+        # Find terraform executable securely
+        terraform_path = find_executable("terraform")
+        if not terraform_path:
+            print("❌ terraform command not found in PATH")
+            return
+
+        exit_code, stdout, stderr = run_secure_command(
+            [terraform_path, "output", "-raw", "custom_domain_url"],
             cwd="terraform",
-            capture_output=True,
-            text=True,
             timeout=10,
+            capture_output=True,
         )
 
-        if result.returncode == 0:
-            domain_url = result.stdout.strip()
+        if exit_code == 0:
+            domain_url = stdout.strip()
             domain = domain_url.replace("https://", "")
 
             print(f"Testing: {domain}")
 
             # Test A record
             try:
-                result = subprocess.run(
-                    ["dig", "+short", "A", domain],
-                    capture_output=True,
-                    text=True,
+                # Find dig executable securely
+                dig_path = find_executable("dig")
+                if not dig_path:
+                    print("❌ dig command not found in PATH")
+                    return
+
+                exit_code, stdout, stderr = run_secure_command(
+                    [dig_path, "+short", "A", domain],
                     timeout=10,
+                    capture_output=True,
                 )
 
-                if result.returncode == 0 and result.stdout.strip():
-                    a_records = result.stdout.strip().split("\n")
+                if exit_code == 0 and stdout.strip():
+                    a_records = stdout.strip().split("\n")
                     print(f"✅ A record: {domain}")
                     for record in a_records:
                         print(f"     → {record.strip()}")

@@ -247,20 +247,27 @@ def get_terraform_outputs() -> Dict[str, Any]:
     print("\n📋 Getting Terraform outputs...")
 
     try:
-        import subprocess
+        from subprocess_utils import run_secure_command, find_executable
+        import json
 
-        # Run terraform output
-        result = subprocess.run(
-            ["terraform", "output", "-json"],
+        # Find terraform executable securely
+        terraform_path = find_executable("terraform")
+        if not terraform_path:
+            raise FileNotFoundError("terraform executable not found in PATH")
+
+        # Run terraform output with secure subprocess
+        exit_code, stdout, stderr = run_secure_command(
+            [terraform_path, "output", "-json"],
             cwd="terraform",
+            timeout=60,
             capture_output=True,
-            text=True,
             check=True,
         )
 
-        import json
+        if exit_code != 0:
+            raise RuntimeError(f"terraform command failed: {stderr}")
 
-        outputs = json.loads(result.stdout)
+        outputs = json.loads(stdout)
 
         # Extract relevant outputs
         domain_info = {}
@@ -279,7 +286,7 @@ def get_terraform_outputs() -> Dict[str, Any]:
 
         return domain_info
 
-    except subprocess.CalledProcessError as e:
+    except (FileNotFoundError, RuntimeError) as e:
         print(f"❌ Terraform error: {e}")
         return {}
     except Exception as e:

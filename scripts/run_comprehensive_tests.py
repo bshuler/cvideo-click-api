@@ -6,9 +6,8 @@ Runs different types of tests in local and remote environments.
 
 import os
 import sys
-import subprocess
 import argparse
-import shlex
+from subprocess_utils import run_secure_command, find_executable
 from typing import Union
 
 
@@ -19,24 +18,22 @@ def run_command(
     print(f"🔄 {description}...")
 
     try:
-        # Use shlex.split to safely parse the command without shell=True
-        cmd_args = shlex.split(cmd)
+        # Use secure command execution
+        exit_code, stdout, stderr = run_secure_command(
+            cmd, capture_output=capture_output, timeout=300
+        )
 
-        if capture_output:
-            result = subprocess.run(cmd_args, capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"✅ {description} completed successfully")
-                return result.stdout
+        if exit_code == 0:
+            print(f"✅ {description} completed successfully")
+            if capture_output:
+                return stdout
             else:
-                print(f"❌ {description} failed: {result.stderr}")
-                return None
-        else:
-            cmd_result = subprocess.run(cmd_args)
-            if cmd_result.returncode == 0:
-                print(f"✅ {description} completed successfully")
                 return True
+        else:
+            print(f"❌ {description} failed: {stderr}")
+            if capture_output:
+                return None
             else:
-                print(f"❌ {description} failed")
                 return False
 
     except Exception as e:
@@ -112,8 +109,9 @@ def run_ci_simulation() -> list:
     print("🤖 Simulating CI/CD Pipeline")
     print("=" * 40)
 
-    act_check = subprocess.run("command -v act", shell=True, capture_output=True)
-    if act_check.returncode != 0:
+    # Check if ACT is available
+    act_path = find_executable("act")
+    if not act_path:
         print("❌ ACT not installed. Use 'make act-setup' to install.")
         return [("ACT Installation", False)]
 

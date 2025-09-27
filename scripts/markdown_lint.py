@@ -9,8 +9,8 @@ markdownlint catches.
 
 import os
 import sys
-import subprocess
 from typing import List, Tuple
+import subprocess_utils
 
 
 def find_markdown_files() -> List[str]:
@@ -67,56 +67,93 @@ def check_markdown_file(file_path: str, fix: bool = False) -> Tuple[bool, str]:
     try:
         if fix:
             # First run pymarkdown fix for comprehensive rule fixes (if config exists)
-            pymarkdown_result = None
+            # Find executables securely
+            pymarkdown_path = subprocess_utils.find_executable("pymarkdown")
+            python_path = subprocess_utils.find_executable("python3")
+
+            if not pymarkdown_path or not python_path:
+                error_msg = (
+                    f"❌ Required executables not found: "
+                    f"pymarkdown={pymarkdown_path}, python3={python_path}"
+                )
+                print(error_msg)
+                return False, error_msg
+
+            # Run pymarkdown with secure subprocess
             if os.path.exists(".pymarkdown.json"):
-                pymarkdown_result = subprocess.run(
-                    ["pymarkdown", "--config", ".pymarkdown.json", "fix", file_path],
-                    capture_output=True,
-                    text=True,
+                pymarkdown_exit, pymarkdown_stdout, pymarkdown_stderr = (
+                    subprocess_utils.run_secure_command(
+                        [
+                            pymarkdown_path,
+                            "--config",
+                            ".pymarkdown.json",
+                            "-d",
+                            "MD013",
+                            "fix",
+                            file_path,
+                        ],
+                        capture_output=True,
+                    )
                 )
             else:
                 # Run without config if not available
-                pymarkdown_result = subprocess.run(
-                    ["pymarkdown", "fix", file_path],
-                    capture_output=True,
-                    text=True,
+                pymarkdown_exit, pymarkdown_stdout, pymarkdown_stderr = (
+                    subprocess_utils.run_secure_command(
+                        [pymarkdown_path, "-d", "MD013", "fix", file_path],
+                        capture_output=True,
+                    )
                 )
 
             # Then run mdformat for consistent formatting
-            mdformat_result = subprocess.run(
-                ["python3", "-m", "mdformat", file_path], capture_output=True, text=True
+            mdformat_exit, mdformat_stdout, mdformat_stderr = (
+                subprocess_utils.run_secure_command(
+                    [python_path, "-m", "mdformat", file_path],
+                    capture_output=True,
+                )
             )
 
-            if pymarkdown_result.returncode == 0 and mdformat_result.returncode == 0:
+            if pymarkdown_exit == 0 and mdformat_exit == 0:
                 return True, f"✅ Fixed: {file_path}"
             else:
                 errors = []
-                if pymarkdown_result.returncode != 0:
-                    errors.append(f"PyMarkdown: {pymarkdown_result.stderr}")
-                if mdformat_result.returncode != 0:
-                    errors.append(f"MDFormat: {mdformat_result.stderr}")
+                if pymarkdown_exit != 0:
+                    errors.append(f"PyMarkdown: {pymarkdown_stderr}")
+                if mdformat_exit != 0:
+                    errors.append(f"MDFormat: {mdformat_stderr}")
                 return False, f"❌ Could not fix: {file_path}\n" + "\n".join(errors)
         else:
             # Check with comprehensive pymarkdown linting using config (if exists)
+            pymarkdown_path = subprocess_utils.find_executable("pymarkdown")
+            if not pymarkdown_path:
+                return False, f"❌ pymarkdown not found in PATH for: {file_path}"
+
             if os.path.exists(".pymarkdown.json"):
-                result = subprocess.run(
-                    ["pymarkdown", "--config", ".pymarkdown.json", "scan", file_path],
-                    capture_output=True,
-                    text=True,
+                pymarkdown_exit, pymarkdown_stdout, pymarkdown_stderr = (
+                    subprocess_utils.run_secure_command(
+                        [
+                            pymarkdown_path,
+                            "--config",
+                            ".pymarkdown.json",
+                            "-d",
+                            "MD013",
+                            "scan",
+                            file_path,
+                        ]
+                    )
                 )
             else:
                 # Run without config if not available
-                result = subprocess.run(
-                    ["pymarkdown", "scan", file_path],
-                    capture_output=True,
-                    text=True,
+                pymarkdown_exit, pymarkdown_stdout, pymarkdown_stderr = (
+                    subprocess_utils.run_secure_command(
+                        [pymarkdown_path, "-d", "MD013", "scan", file_path]
+                    )
                 )
 
-            if result.returncode == 0:
+            if pymarkdown_exit == 0:
                 return True, f"✅ Valid: {file_path}"
             else:
                 # Format the output to show specific rule violations
-                return False, f"❌ Invalid: {file_path}\n{result.stdout.strip()}"
+                return False, f"❌ Invalid: {file_path}\n{pymarkdown_stdout.strip()}"
 
     except FileNotFoundError as e:
         if "pymarkdown" in str(e):

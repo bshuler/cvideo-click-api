@@ -1,5 +1,6 @@
 """Unit tests for shared utilities."""
 
+import json
 from unittest.mock import patch
 from src.shared.utils import (
     setup_logging,
@@ -17,16 +18,23 @@ def test_create_response() -> None:
     assert response["statusCode"] == 200
     assert response["headers"]["Content-Type"] == "application/json"
     assert response["headers"]["Access-Control-Allow-Origin"] == "*"
-    assert '"message": "test"' in response["body"]
+    response_body = json.loads(response["body"])
+    assert response_body["success"] is True
+    assert response_body["data"] == {"message": "test"}
 
 
 def test_create_error_response() -> None:
     """Test create_error_response utility function."""
-    response = create_error_response(400, "Bad request", "BAD_REQUEST")
+    response = create_error_response(
+        400, "Bad request", "BAD_REQUEST", {"field": "value"}
+    )
 
     assert response["statusCode"] == 400
-    assert '"error": "Bad request"' in response["body"]
-    assert '"errorCode": "BAD_REQUEST"' in response["body"]
+    body = json.loads(response["body"])
+    assert body["success"] is False
+    assert body["error"]["code"] == "BAD_REQUEST"
+    assert body["error"]["message"] == "Bad request"
+    assert body["error"]["details"] == {"field": "value"}
 
 
 def test_validate_required_fields() -> None:
